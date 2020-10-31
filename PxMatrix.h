@@ -124,7 +124,6 @@ class PxMATRIX : public Adafruit_GFX {
  public:
   inline PxMATRIX(uint16_t width, uint16_t height);
 
-  inline void begin(uint8_t row_pattern, uint8_t CLK, uint8_t MOSI, uint8_t MISO, uint8_t SS);
   inline void begin(uint8_t row_pattern);
   inline void begin();
 
@@ -280,7 +279,7 @@ class PxMATRIX : public Adafruit_GFX {
 	};
 	struct_display_seq * display_seq_current = &display_seq[0];
 */		
-	uint8_t seq_REG_CMD[16] = {
+	const uint8_t seq_REG_CMD[16] = {
 		GPIO_OUT_W1TS_ADDRESS,
 		GPIO_OUT_W1TS_ADDRESS,
 		GPIO_OUT_W1TC_ADDRESS,
@@ -297,7 +296,7 @@ class PxMATRIX : public Adafruit_GFX {
 		GPIO_OUT_W1TC_ADDRESS,
 		GPIO_OUT_W1TC_ADDRESS,
 		GPIO_OUT_W1TC_ADDRESS};
-	uint8_t seq_REG_VAL[16] = {
+	const uint8_t seq_REG_VAL[16] = {
 		1<<GPIO_A,
 		1<<GPIO_B,
 		1<<GPIO_A,
@@ -314,7 +313,7 @@ class PxMATRIX : public Adafruit_GFX {
 		1<<GPIO_C,
 		1<<GPIO_B,
 		1<<GPIO_D};
-	uint8_t seq_ROW_ID[16] = {
+	const uint8_t seq_ROW_ID[16] = {
 		1,
 		3,
 		2,
@@ -331,7 +330,6 @@ class PxMATRIX : public Adafruit_GFX {
 		10,
 		8,
 		0};
-
 
   // Generic function that draw one pixel
 inline void fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t g,uint8_t b, bool selected_buffer);
@@ -770,11 +768,6 @@ inline void PxMATRIX::begin()
 {
   begin(8);
 
-}
-
-void PxMATRIX::begin(uint8_t row_pattern, uint8_t CLK, uint8_t MOSI, uint8_t MISO, uint8_t SS)
-{
-  begin(row_pattern);
 }
 
 void PxMATRIX::spi_init(){
