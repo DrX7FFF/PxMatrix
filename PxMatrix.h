@@ -40,8 +40,18 @@ BSD license, check license.txt for more information
 
 // Defines how long we display things by default
 #ifndef PxMATRIX_SHOWTIME
-#define PxMATRIX_SHOWTIME 10
+#define PxMATRIX_SHOWTIME 30
 #endif
+// Sequence pour 30 à 160 MHz : 
+	// 15 (us) 2400 (cycles)
+	// 30 (us) 4800 (cycles)
+	// 60 (us) 9600 (cycles)
+	// 120 (us) 19200 (cycles)
+	// 240 (us) 38400 (cycles)
+	// 480 (us) 76800 (cycles)
+// Total 945 (us)
+// Soit 15120 us pour une image compléte
+// Soit 66,1 images / minute
 
 // Defines the speed of the SPI bus (reducing this may help if you experience noisy images)
 #ifndef PxMATRIX_SPI_FREQUENCY
@@ -113,10 +123,6 @@ enum color_orders {RRGGBB, RRBBGG, GGRRBB, GGBBRR, BBRRGG, BBGGRR};
 class PxMATRIX : public Adafruit_GFX {
  public:
   inline PxMATRIX(uint16_t width, uint16_t height);
-  inline PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B);
-  inline PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B,uint8_t C);
-  inline PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B,uint8_t C,uint8_t D);
-  inline PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B,uint8_t C,uint8_t D,uint8_t E);
 
   inline void begin(uint8_t row_pattern, uint8_t CLK, uint8_t MOSI, uint8_t MISO, uint8_t SS);
   inline void begin(uint8_t row_pattern);
@@ -309,7 +315,6 @@ class PxMATRIX : public Adafruit_GFX {
 		1<<GPIO_B,
 		1<<GPIO_D};
 	uint8_t seq_ROW_ID[16] = {
-//		0,
 		1,
 		3,
 		2,
@@ -420,26 +425,6 @@ inline void PxMATRIX::setBrightness(uint8_t brightness) {
 }
 
 inline PxMATRIX::PxMATRIX(uint16_t width, uint16_t height) : Adafruit_GFX(width+ADAFRUIT_GFX_EXTRA, height)
-{
-  init(width, height);
-}
-
-inline PxMATRIX::PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B) : Adafruit_GFX(width+ADAFRUIT_GFX_EXTRA, height)
-{
-  init(width, height);
-}
-
-inline PxMATRIX::PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B,uint8_t C) : Adafruit_GFX(width+ADAFRUIT_GFX_EXTRA, height)
-{
-  init(width, height);
-}
-
-inline PxMATRIX::PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B,uint8_t C,uint8_t D) : Adafruit_GFX(width+ADAFRUIT_GFX_EXTRA, height)
-{
-  init(width, height);
-}
-
-inline PxMATRIX::PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B,uint8_t C,uint8_t D, uint8_t E) : Adafruit_GFX(width+ADAFRUIT_GFX_EXTRA, height)
 {
   init(width, height);
 }
@@ -793,8 +778,8 @@ void PxMATRIX::begin(uint8_t row_pattern, uint8_t CLK, uint8_t MOSI, uint8_t MIS
 }
 
 void PxMATRIX::spi_init(){
-//	uint32_t mask = ~(SPIMMOSI << SPILMOSI);
-//	uint16_t bits = _send_buffer_size*8 -1;
+	uint32_t mask = ~(SPIMMOSI << SPILMOSI);
+	uint16_t bits = _send_buffer_size*8 -1;
 
     SPI.begin();
 
@@ -802,7 +787,7 @@ void PxMATRIX::spi_init(){
 
     SPI.setDataMode(SPI_MODE0);
     SPI.setBitOrder(MSBFIRST);
-//	SPI1U1 = ((SPI1U1 & mask) | (bits << SPILMOSI));
+	SPI1U1 = ((SPI1U1 & mask) | (bits << SPILMOSI));
 }
 
 void PxMATRIX::begin(uint8_t row_pattern) {
@@ -933,7 +918,6 @@ inline void PxMATRIX::displayTimer(){
 //	GPIO_REG_WRITE(display_seq_current->reg_cmd,display_seq_current->reg_val);
 	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS,1<<GPIO_LAT);
 	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,1<<GPIO_LAT);
-	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,1<<GPIO_OE);
 
 	_display_row++;
 //	temp = _display_row & 0xF;
@@ -956,9 +940,11 @@ inline void PxMATRIX::displayTimer(){
 #endif
 //	memcpy((void *)&SPI1W0,&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[temp]*_send_buffer_size],_send_buffer_size);
 //	memcpy((void *)&SPI1W0,&PxMATRIX_bufferp[_display_color*_buffer_size+display_seq_current->row*_send_buffer_size],_send_buffer_size);
-//	SPI1CMD |= SPIBUSY;
+	memcpy((void *)&SPI1W0,&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[_display_row]*_send_buffer_size],_send_buffer_size);
+	SPI1CMD |= SPIBUSY;
 //	SPI_TRANSFER(&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[temp]*_send_buffer_size],_send_buffer_size);
-	SPI_TRANSFER(&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[_display_row]*_send_buffer_size],_send_buffer_size);
+//	SPI_TRANSFER(&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[_display_row]*_send_buffer_size],_send_buffer_size);
+	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,1<<GPIO_OE);
 //	interrupts();
 }
 
