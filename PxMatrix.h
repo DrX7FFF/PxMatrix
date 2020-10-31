@@ -33,7 +33,6 @@ BSD license, check license.txt for more information
 #ifndef PxMATRIX_COLOR_DEPTH
 #define PxMATRIX_COLOR_DEPTH 4
 #endif
-
 #if PxMATRIX_COLOR_DEPTH > 8 || PxMATRIX_COLOR_DEPTH < 1
 #error "PxMATRIX_COLOR_DEPTH must be 1 to 8 bits maximum"
 #endif
@@ -116,9 +115,10 @@ enum color_orders {RRGGBB, RRBBGG, GGRRBB, GGBBRR, BBRRGG, BBGGRR};
 
 // Total number of bytes that is pushed to the display at a time
 // 3 * _pattern_color_bytes
-//#define	BUFFER_SIZE				PxMATRIX_WIDTH*3/8
-//#define PATTERN_COLOR_BYTES 	(PxMATRIX_HEIGHT/PxMATRIX_ROW_PATTERN)*(PxMATRIX_WIDTH/8)
-//#define SEND_BUFFER_SIZE		PATTERN_COLOR_BYTES*3
+#define	BUFFER_SIZE				(PxMATRIX_HEIGHT*PxMATRIX_WIDTH*3/8)
+#define PATTERN_COLOR_BYTES 	((PxMATRIX_HEIGHT/PxMATRIX_ROW_PATTERN)*(PxMATRIX_WIDTH/8))
+#define SEND_BUFFER_SIZE		(PATTERN_COLOR_BYTES*3)
+//#define ROW_SETS_PER_BUFFER		_rows_per_buffer/PxMATRIX_ROW_PATTERN)
 
 class PxMATRIX : public Adafruit_GFX {
  public:
@@ -895,7 +895,15 @@ inline void PxMATRIX::displayTimerChrono(){
 }
 inline void PxMATRIX::serialInfo(){
 	Serial.printf("CPU : %d MHz (CPU2X=%x)\r\n", CPU2X & 1?160:80,CPU2X);
-	Serial.println("Sequence : ");
+	Serial.printf("Height             \t%d\t%d\r\n",_height,PxMATRIX_HEIGHT);
+	Serial.printf("Width              \t%d\t%d\r\n",_width,PxMATRIX_WIDTH);
+	Serial.printf("Row pattern        \t%d\t%d\r\n",_row_pattern,PxMATRIX_ROW_PATTERN);
+	Serial.printf("Buffer size        \t%d\t%d\r\n",_buffer_size,BUFFER_SIZE);	
+	Serial.printf("Pattern color bytes\t%d\t%d\r\n",_pattern_color_bytes,PATTERN_COLOR_BYTES);
+	Serial.printf("Send buffer size   \t%d\t%d\r\n",_send_buffer_size,SEND_BUFFER_SIZE);
+//	Serial.printf("Row sets per buffer\t%d\t%d\r\n",_row_sets_per_buffer);
+//	Serial.printf("\t%d\t%d\r\n",);
+	Serial.println("Sequence :");
 	for(uint8_t i = 0; i <PxMATRIX_COLOR_DEPTH;i++)
 		Serial.printf("\t%d (us) %d (cycles)\r\n", _latch_seq[i]/5, _latch_seq[i]*(CPU2X?160:80)/5);
 }
