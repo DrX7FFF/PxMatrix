@@ -9,6 +9,26 @@ BSD license, check license.txt for more information
 #ifndef _PxMATRIX_H
 #define _PxMATRIX_H
 
+// Pins affectation
+#define GPIO_A 0
+#define GPIO_B 4
+#define GPIO_C 5
+#define GPIO_D 2
+#define GPIO_OE 15
+#define GPIO_LAT 12
+
+// Pixels width size
+#ifndef PxMATRIX_WIDTH
+#define PxMATRIX_WIDTH 32
+#endif
+
+// Pixels height size
+#ifndef PxMATRIX_HEIGHT
+#define PxMATRIX_HEIGHT 32
+#endif
+
+#define PxMATRIX_ROW_PATTERN 	16
+
 // Color depth per primary color - the more the slower the update
 #ifndef PxMATRIX_COLOR_DEPTH
 #define PxMATRIX_COLOR_DEPTH 4
@@ -19,8 +39,8 @@ BSD license, check license.txt for more information
 #endif
 
 // Defines how long we display things by default
-#ifndef PxMATRIX_DEFAULT_SHOWTIME
-#define PxMATRIX_DEFAULT_SHOWTIME 30
+#ifndef PxMATRIX_SHOWTIME
+#define PxMATRIX_SHOWTIME 10
 #endif
 
 // Defines the speed of the SPI bus (reducing this may help if you experience noisy images)
@@ -37,17 +57,9 @@ BSD license, check license.txt for more information
 #define _BV(x) (1 << (x))
 #endif
 
-#if defined(ESP8266) || defined(ESP32)
-  #define SPI_TRANSFER(x,y) SPI.writeBytes(x,y)
-  #define SPI_BYTE(x) SPI.write(x)
-  #define SPI_2BYTE(x) SPI.write16(x)
-#endif
-
-#ifdef __AVR__
-  #define SPI_TRANSFER(x,y) SPI.transfer(x,y)
-  #define SPI_BYTE(x) SPI.transfer(x)
-  #define SPI_2BYTE(x) SPI.transfer16(x)
-#endif
+#define SPI_TRANSFER(x,y) SPI.writeBytes(x,y)
+#define SPI_BYTE(x) SPI.write(x)
+#define SPI_2BYTE(x) SPI.write16(x)
 
 #include "Adafruit_GFX.h"
 #include "Arduino.h"
@@ -59,12 +71,6 @@ BSD license, check license.txt for more information
 #include "WProgram.h"
 #endif
 
-#ifdef __AVR__
-#include <util/delay.h>
-#endif
-
-
-
 #include <stdlib.h>
 
 // Sometimes some extra width needs to be passed to Adafruit GFX constructor
@@ -74,47 +80,9 @@ BSD license, check license.txt for more information
 #endif
 
 
+#define GPIO_REG_SET(val) GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS,val)
+#define GPIO_REG_CLEAR(val) GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,val)
 
-#ifdef ESP8266
-  #define GPIO_REG_SET(val) GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS,val)
-  #define GPIO_REG_CLEAR(val) GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,val)
-#endif
-#ifdef ESP32
-  #define GPIO_REG_SET(val) GPIO.out_w1ts = val
-  #define GPIO_REG_CLEAR(val) GPIO.out_w1tc = val
-#endif
-#ifdef __AVR__
-  #define GPIO_REG_SET(val) (val < 8) ? PORTD |= _BV(val) : PORTB |= _BV(val-8)
-  #define GPIO_REG_CLEAR(val) (val < 8) ? PORTD &= ~_BV(val) : PORTB &= ~_BV(val-8)
-#endif
-
-#ifdef ESP32
-
-  #include "soc/spi_struct.h"
-  #include "esp32-hal-gpio.h"
-
-  struct spi_struct_t {
-      spi_dev_t * dev;
-  #if !CONFIG_DISABLE_HAL_LOCKS
-      xSemaphoreHandle lock;
-  #endif
-      uint8_t num;
-  };
-#endif
-
-// HW SPI PINS
-#define SPI_BUS_CLK 14
-#define SPI_BUS_MOSI 13
-#define SPI_BUS_MISO 12
-#define SPI_BUS_SS 4
-
-// Specify how the Panel handles row muxing:
-// BINARY: Pins A-E map to rows 1-32 via binary decoding (default)
-// STRAIGHT: Pins A-D are directly mapped to rows 1-4
-// SHIFTREG: A, B, C on Panel are connected to a shift register Clock, /Enable, Data
-// SHIFTREG_ABC_BIN_DE: A-C are connected to Shift-Register Clock, Data, /Enable, D-E to binary decoder (crazy shit)
-// SHIFTREG_SPI_SE: Like SHIFTREG, but you connect A and C on Panel to its Clock and Data output (and ground B). This will not work with fast_update enabled!
-enum mux_patterns {BINARY, STRAIGHT, SHIFTREG_ABC, SHIFTREG_SPI_SE, SHIFTREG_ABC_BIN_DE};
 
 // Specifies what blocking pattern the panel is using 
 // |AB|,|DB|
@@ -127,10 +95,6 @@ enum block_patterns {ABCD, DBCA};
 // ZIGZAG jumps 4 rows after every byte, ZAGGII alse revereses every second byte
 enum scan_patterns {LINE, ZIGZAG,ZZAGG, ZAGGIZ, WZAGZIG, VZAG, ZAGZIG, WZAGZIG2, ZZIAGG};
 
-// Specifies speciffic driver chip. Most panels implement a standard shifted
-// register (SHIFT). Other chips/panels may need special treatment in oder to work
-enum driver_chips {SHIFT, FM6124, FM6126A};
-
 // Specify the color order
 enum color_orders {RRGGBB, RRBBGG, GGRRBB, GGBBRR, BBRRGG, BBGGRR};
 
@@ -140,8 +104,15 @@ enum color_orders {RRGGBB, RRBBGG, GGRRBB, GGBBRR, BBRRGG, BBGGRR};
 #define color_third_step (int(color_step / 3))
 #define color_two_third_step (int(color_third_step*2))
 
+// Total number of bytes that is pushed to the display at a time
+// 3 * _pattern_color_bytes
+//#define	BUFFER_SIZE				PxMATRIX_WIDTH*3/8
+//#define PATTERN_COLOR_BYTES 	(PxMATRIX_HEIGHT/PxMATRIX_ROW_PATTERN)*(PxMATRIX_WIDTH/8)
+//#define SEND_BUFFER_SIZE		PATTERN_COLOR_BYTES*3
+
 class PxMATRIX : public Adafruit_GFX {
  public:
+  inline PxMATRIX(uint16_t width, uint16_t height);
   inline PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B);
   inline PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B,uint8_t C);
   inline PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B,uint8_t C,uint8_t D);
@@ -154,9 +125,11 @@ class PxMATRIX : public Adafruit_GFX {
   inline void clearDisplay(void);
   inline void clearDisplay(bool selected_buffer);
 
-  // Updates the display
-  inline void display(uint16_t show_time);
-  inline void display();
+	inline void display_enable();
+	inline void display_disable();
+	inline uint32_t testCycle();
+	inline void serialCycleCount();
+	inline void serialInfo();
 
   // Draw pixels
   inline void drawPixelRGB565(int16_t x, int16_t y, uint16_t color);
@@ -171,12 +144,6 @@ class PxMATRIX : public Adafruit_GFX {
   // Converts RGB888 to RGB565
   uint16_t color565(uint8_t r, uint8_t g, uint8_t b);
 
-  // Helpful for debugging (place in display update loop)
-  inline void displayTestPattern(uint16_t showtime);
-
-  // Helpful for debugging (place in display update loop)
-  inline void displayTestPixel(uint16_t show_time);
-
   // FLush the buffer of the display
   inline void flushDisplay();
 
@@ -185,10 +152,7 @@ class PxMATRIX : public Adafruit_GFX {
 
   // Flip display
   inline void setFlip(bool flip);
-
-  // Helps to reduce display update latency on larger displays
-  inline void setFastUpdate(bool fast_update);
-
+  
   // When using double buffering, this displays the draw buffer
   inline void showBuffer();
 
@@ -200,15 +164,8 @@ class PxMATRIX : public Adafruit_GFX {
   // Control the minimum color values that result in an active pixel
   inline void setColorOffset(uint8_t r, uint8_t g,uint8_t b);
 
-  // Set the multiplex implemention {BINARY, STRAIGHT, SHIFTREG} (default is BINARY)
-  inline void setMuxPattern(mux_patterns mux_pattern);
-
     // Set the color order
   inline void setColorOrder(color_orders color_order);
-
-  // Set the time in microseconds that we pause after selecting each mux channel
-  // (May help if some rows are missing / the mux chip is too slow)
-  inline void setMuxDelay(uint8_t mux_delay_A, uint8_t mux_delay_B, uint8_t mux_delay_C, uint8_t mux_delay_D, uint8_t mux_delay_E);
 
   // Set the multiplex pattern {LINE, ZIGZAG, ZAGGIZ, WZAGZIG, VZAG, WZAGZIG2} (default is LINE)
   inline void setScanPattern(scan_patterns scan_pattern);
@@ -222,9 +179,6 @@ class PxMATRIX : public Adafruit_GFX {
   // Set the brightness of the panels (default is 255)
   inline void setBrightness(uint8_t brightness);
 
-  // Set driver chip type
-  inline void setDriverChip(driver_chips driver_chip);
-
  private:
 
  // the display buffer for the LED matrix
@@ -232,21 +186,6 @@ class PxMATRIX : public Adafruit_GFX {
 #ifdef PxMATRIX_DOUBLE_BUFFER
   uint8_t *PxMATRIX_buffer2;
 #endif
-
-  // GPIO pins
-  uint8_t _LATCH_PIN;
-  uint8_t _OE_PIN;
-  uint8_t _A_PIN;
-  uint8_t _B_PIN;
-  uint8_t _C_PIN;
-  uint8_t _D_PIN;
-  uint8_t _E_PIN;
-
-  // SPI pins
-  uint8_t _SPI_CLK = SPI_BUS_CLK;
-  uint8_t _SPI_MOSI = SPI_BUS_MOSI;
-  uint8_t _SPI_MISO = SPI_BUS_MISO;
-  uint8_t _SPI_SS = SPI_BUS_SS;
 
   uint16_t _width;
   uint16_t _height;
@@ -286,19 +225,9 @@ class PxMATRIX : public Adafruit_GFX {
   // Display and color engine
   bool _rotate;
   bool _flip;
-  bool _fast_update;
-
-  // Holds multiplex pattern
-  mux_patterns _mux_pattern;
 
   //Holdes the color order
   color_orders _color_order;
-
-  uint8_t _mux_delay_A;
-  uint8_t _mux_delay_B;
-  uint8_t _mux_delay_C;
-  uint8_t _mux_delay_D;
-  uint8_t _mux_delay_E;
 
   // Holds the scan pattern
   scan_patterns _scan_pattern;
@@ -306,25 +235,104 @@ class PxMATRIX : public Adafruit_GFX {
   // Holds the block pattern
   block_patterns _block_pattern;
 
-  // Holds the used driver chip
-  driver_chips _driver_chip;
+	uint8_t _display_row = 0;
+	uint8_t temp = 0;
+	uint16_t _latch_seq[PxMATRIX_COLOR_DEPTH];
+	static PxMATRIX *_instance;
+	static void displayCallback();
+	inline void displayTimer();
+	inline void displayTimerChrono();
+	inline void initLatchSeq();
+	
+	uint32_t cycleTotalTemp = 0;
+	uint32_t cycleTotal = 0;
+	uint32_t cycleTotalMin = 0xFFFFFFFF;
+	uint32_t cycleTotalMax = 0;
+/*
+	struct struct_display_seq {
+				uint8_t reg_cmd;
+				uint8_t reg_val;
+				uint8_t row;
+			} ;
+	struct_display_seq display_seq[16] ={ 
+		{GPIO_OUT_W1TS_ADDRESS, 1<<GPIO_A, 1},
+		{GPIO_OUT_W1TS_ADDRESS, 1<<GPIO_B, 3},
+		{GPIO_OUT_W1TC_ADDRESS, 1<<GPIO_A, 2},
+		{GPIO_OUT_W1TS_ADDRESS, 1<<GPIO_C, 6},
+		{GPIO_OUT_W1TS_ADDRESS, 1<<GPIO_A, 7},
+		{GPIO_OUT_W1TC_ADDRESS, 1<<GPIO_B, 5},
+		{GPIO_OUT_W1TC_ADDRESS, 1<<GPIO_A, 4},
+		{GPIO_OUT_W1TS_ADDRESS, 1<<GPIO_D, 12},
+		{GPIO_OUT_W1TS_ADDRESS, 1<<GPIO_A, 13},
+		{GPIO_OUT_W1TC_ADDRESS, 1<<GPIO_C, 9},
+		{GPIO_OUT_W1TS_ADDRESS, 1<<GPIO_B, 11},
+		{GPIO_OUT_W1TS_ADDRESS, 1<<GPIO_C, 15},
+		{GPIO_OUT_W1TC_ADDRESS, 1<<GPIO_A, 14},
+		{GPIO_OUT_W1TC_ADDRESS, 1<<GPIO_C, 10},
+		{GPIO_OUT_W1TC_ADDRESS, 1<<GPIO_B, 8},
+		{GPIO_OUT_W1TC_ADDRESS, 1<<GPIO_D, 0}
+	};
+	struct_display_seq * display_seq_current = &display_seq[0];
+*/		
+	uint8_t seq_REG_CMD[16] = {
+		GPIO_OUT_W1TS_ADDRESS,
+		GPIO_OUT_W1TS_ADDRESS,
+		GPIO_OUT_W1TC_ADDRESS,
+		GPIO_OUT_W1TS_ADDRESS,
+		GPIO_OUT_W1TS_ADDRESS,
+		GPIO_OUT_W1TC_ADDRESS,
+		GPIO_OUT_W1TC_ADDRESS,
+		GPIO_OUT_W1TS_ADDRESS,
+		GPIO_OUT_W1TS_ADDRESS,
+		GPIO_OUT_W1TC_ADDRESS,
+		GPIO_OUT_W1TS_ADDRESS,
+		GPIO_OUT_W1TS_ADDRESS,
+		GPIO_OUT_W1TC_ADDRESS,
+		GPIO_OUT_W1TC_ADDRESS,
+		GPIO_OUT_W1TC_ADDRESS,
+		GPIO_OUT_W1TC_ADDRESS};
+	uint8_t seq_REG_VAL[16] = {
+		1<<GPIO_A,
+		1<<GPIO_B,
+		1<<GPIO_A,
+		1<<GPIO_C,
+		1<<GPIO_A,
+		1<<GPIO_B,
+		1<<GPIO_A,
+		1<<GPIO_D,
+		1<<GPIO_A,
+		1<<GPIO_C,
+		1<<GPIO_B,
+		1<<GPIO_C,
+		1<<GPIO_A,
+		1<<GPIO_C,
+		1<<GPIO_B,
+		1<<GPIO_D};
+	uint8_t seq_ROW_ID[16] = {
+//		0,
+		1,
+		3,
+		2,
+		6,
+		7,
+		5,
+		4,
+		12,
+		13,
+		9,
+		11,
+		15,
+		14,
+		10,
+		8,
+		0};
 
-  // Used for test pattern
-  uint16_t _test_pixel_counter;
-  uint16_t _test_line_counter;
-  unsigned long _test_last_call;
 
   // Generic function that draw one pixel
 inline void fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t g,uint8_t b, bool selected_buffer);
 
   // Init code common to both constructors
-inline void init(uint16_t width, uint16_t height ,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B);
-
-  // Light up LEDs and hold for show_time microseconds
-inline void latch(uint16_t show_time );
-
-  // Set row multiplexer
-inline void set_mux(uint8_t value, bool random_access);
+inline void init(uint16_t width, uint16_t height);
 
 inline void spi_init();
 
@@ -339,13 +347,11 @@ inline uint16_t PxMATRIX::color565(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 // Init code common to both constructors
-inline void PxMATRIX::init(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A, uint8_t B){
-  _LATCH_PIN = LATCH;
-  _OE_PIN = OE;
-  _display_color=0;
+inline void PxMATRIX::init(uint16_t width, uint16_t height){
+	_instance = this;
 
-  _A_PIN = A;
-  _B_PIN = B;
+	_display_row = 0;
+	_display_color=0;
 
   _width = width;
   _height = height;
@@ -364,23 +370,14 @@ inline void PxMATRIX::init(uint16_t width, uint16_t height,uint8_t LATCH, uint8_
   _color_G_offset=0;
   _color_B_offset=0;
 
-  _test_last_call=0;
-  _test_pixel_counter=0;
-  _test_line_counter=0;
   _rotate=0;
   _flip=0;
-  _fast_update=0;
 
   _row_pattern=0;
   _scan_pattern=LINE;
   _block_pattern=ABCD;
-  _driver_chip=SHIFT;
-
-  _mux_delay_A=0;
-  _mux_delay_B=0;
-  _mux_delay_C=0;
-  _mux_delay_D=0;
-  _mux_delay_E=0;
+  	
+	initLatchSeq();
 
     PxMATRIX_buffer= new uint8_t[PxMATRIX_COLOR_DEPTH*_buffer_size];
   #ifdef PxMATRIX_DOUBLE_BUFFER
@@ -389,185 +386,9 @@ inline void PxMATRIX::init(uint16_t width, uint16_t height,uint8_t LATCH, uint8_
 
 }
 
-#ifdef ESP32
-inline void PxMATRIX::fm612xWriteRegister(uint16_t reg_value, uint8_t reg_position)
-{
-    spi_t * spi = SPI.bus();
-    // reg_value = 0x1234;  debug
-
-    for(int i=0; i<47; i++)
-      SPI_2BYTE(reg_value);
-
-    spiSimpleTransaction(spi);
-
-    spi->dev->mosi_dlen.usr_mosi_dbitlen = 16-reg_position-1;
-    spi->dev->miso_dlen.usr_miso_dbitlen = 0;
-    spi->dev->data_buf[0] = reg_value>>8;
-    spi->dev->cmd.usr = 1;
-    while(spi->dev->cmd.usr);
-
-    GPIO_REG_SET(1 << _LATCH_PIN);
-
-    spi->dev->mosi_dlen.usr_mosi_dbitlen = (reg_position-8)-1;
-    spi->dev->data_buf[0] = reg_value>>(reg_position-8);
-    spi->dev->cmd.usr = 1;
-    while(spi->dev->cmd.usr);
-    spiEndTransaction(spi);
-
-    SPI_BYTE(reg_value&0xff);
-
-    GPIO_REG_CLEAR(1 << _LATCH_PIN);
-
-}
-#else
-inline void PxMATRIX::writeRegister(uint16_t reg_value, uint8_t reg_position)
-{
-  if (_driver_chip == FM6124 || _driver_chip == FM6126A){
-
-    if (_driver_chip == FM6124) {
-       Serial.println("\nFM6124 - REG: " + String(reg_position));
-    } else {
-       Serial.println("\nFM6126A - REG: " + String(reg_position));
-    }
-
-    // All FM6126A code is based on the excellent guesswork by shades66 in https://github.com/hzeller/rpi-rgb-led-matrix/issues/746
-    // Register 12 - brightness/gain settings, three 6bit values, aaaaaabbbbbbcccccc a= darkness?
-    //               seems to add red to the background when the leds are off, b=main brightness c=finer brightness
-    //               (i'm not sure if b & c are actually as 12 bit value but with b set to all 1's the value in c doesn't seem to make much difference)
-
-    // Register 13 - not sure what it's doing yet, just that 1 specific bit within seems to be an overall enable function.
-
-    // Now set all the values at the top to the same value for each of register 12/13 to get the same settings across the panel, the current code loads different settings into each 32 columns.
-    // clocking in the register is simply clocking in the value (i've 2 panels so 128bits of data) and for the last 12/13 bits depending on the register setting the latch to high. the final drop of latch to low clocks in the configuration. this is done by sending the same value to r1/r2/g1/g2/b1/b2 at the same time to load the config into all the FM6126 chips
-
-    // Some necessary magic bit fields
-    // b12  - 1  adds red tinge
-    // b12  - 9/8/7/6/5  =  4 bit brightness
-    // b13  - 9   =1 screen on
-    // b13  - 6   =1 screen off
-    pinMode(_SPI_CLK,OUTPUT);
-    pinMode(_SPI_MOSI,OUTPUT);
-    digitalWrite(_SPI_CLK,HIGH); // CCK LOW
-    digitalWrite(_OE_PIN,LOW);
-    digitalWrite(_LATCH_PIN,HIGH);
-    digitalWrite(_A_PIN,HIGH);
-    digitalWrite(_B_PIN,LOW);
-    digitalWrite(_C_PIN,LOW);
-    digitalWrite(_D_PIN,LOW);
-
-    uint8_t reg_bit=0;
-    for (uint32_t bit_counter=0; bit_counter < _send_buffer_size*8; bit_counter++)
-    {
-      reg_bit=bit_counter%16;
-      if ((reg_value>>reg_bit)&1)
-        digitalWrite(_SPI_MOSI,HIGH);
-      else
-        digitalWrite(_SPI_MOSI,LOW);
-
-      delay(1);
-      digitalWrite(_SPI_CLK,LOW); // CLK HIGH
-      delay(1);
-      digitalWrite(_SPI_CLK,HIGH); // CLK LOW
-      delay(1);
-      if ((bit_counter ==  (_send_buffer_size*8 - reg_position-1)))
-      {
-        digitalWrite(_LATCH_PIN,LOW);
-      }
-    }
-    digitalWrite(_LATCH_PIN,HIGH);
-  }
-  digitalWrite(_OE_PIN,HIGH);
-
-}
-#endif
-
-inline void PxMATRIX::setDriverChip(driver_chips driver_chip)
-{
-  _driver_chip=driver_chip;
-
-  if (driver_chip == FM6124 || driver_chip == FM6126A){
-
-    uint16_t b12a=0b0111111111111111; //亮度: high
-             b12a=0b0111100011111111; //亮度: low
- // uint16_t b12b=0b0111100000111111;
-    // uint16_t b12c=0b0111111111111111;
-    // uint16_t b12d=0b0111100000111111;
-
-    uint16_t b13a=0b0000000001000000;
-    // uint16_t b13b=0b0000000001000000;
-    // uint16_t b13c=0b0000000001000000;
-    // uint16_t b13d=0b0000000001000000;
-
-#ifdef ESP32
-    pinMode(_OE_PIN, OUTPUT);
-    pinMode(_LATCH_PIN, OUTPUT);
-    digitalWrite(_OE_PIN, HIGH);
-    pinMode(_LATCH_PIN, LOW);
-
-    fm612xWriteRegister(b12a,11);
-    fm612xWriteRegister(b13a,12);
-
-#else
-    writeRegister(b12a, 12);
-    writeRegister(b13a, 13);
-#endif
-
-
-  }
-}
-
-inline void PxMATRIX::setMuxPattern(mux_patterns mux_pattern)
-{
-  _mux_pattern=mux_pattern;
-
-  // We handle the multiplexing in the library and activate one of for
-  // row drivers --> need A,B,C,D pins
-  if (_mux_pattern==STRAIGHT)
-  {
-    pinMode(_C_PIN, OUTPUT);
-    pinMode(_D_PIN, OUTPUT);
-  }
-
-  if (_mux_pattern==SHIFTREG_SPI_SE)
-  {
-    pinMode(_B_PIN, OUTPUT); // B is used as /Enable for row mux
-    digitalWrite(_B_PIN,LOW); // Enable output of row mux
-  }
-
-  if (_mux_pattern==SHIFTREG_ABC)
-  {
-    pinMode(_A_PIN, OUTPUT); // A is used as MUX_CLK
-    pinMode(_B_PIN, OUTPUT); // B is used as MUX_ENABLE
-    pinMode(_C_PIN, OUTPUT); // C is used as MUX_DATA
-    digitalWrite(_B_PIN,LOW); // Enable output of row mux
-  }
-
-  if (_mux_pattern==SHIFTREG_ABC_BIN_DE)
-  {
-    pinMode(_A_PIN, OUTPUT); // A is used as MUX_CLK
-    pinMode(_B_PIN, OUTPUT); // B is used as MUX_DATA
-    pinMode(_C_PIN, OUTPUT); // C is used as MUX_ENABLE
-    pinMode(_D_PIN, OUTPUT); // D is 4th bit of row
-    pinMode(_E_PIN, OUTPUT); // E is 5th bit of row
-    digitalWrite(_C_PIN,LOW); // Enable output of row mux
-  }
-}
-
-
 inline void PxMATRIX::setColorOrder(color_orders color_order)
 {
   _color_order=color_order;
-}
-
-
-
-inline void PxMATRIX::setMuxDelay(uint8_t mux_delay_A, uint8_t mux_delay_B, uint8_t mux_delay_C, uint8_t mux_delay_D, uint8_t mux_delay_E)
-{
-  _mux_delay_A=mux_delay_A;
-  _mux_delay_B=mux_delay_B;
-  _mux_delay_C=mux_delay_C;
-  _mux_delay_D=mux_delay_D;
-  _mux_delay_E=mux_delay_E;
 }
 
 inline void PxMATRIX::setScanPattern(scan_patterns scan_pattern)
@@ -593,39 +414,34 @@ inline void PxMATRIX::setFlip(bool flip) {
   _flip=flip;
 }
 
-inline void PxMATRIX::setFastUpdate(bool fast_update) {
-  _fast_update=fast_update;
-}
-
 inline void PxMATRIX::setBrightness(uint8_t brightness) {
   _brightness=brightness;
+	initLatchSeq();
 }
 
+inline PxMATRIX::PxMATRIX(uint16_t width, uint16_t height) : Adafruit_GFX(width+ADAFRUIT_GFX_EXTRA, height)
+{
+  init(width, height);
+}
 
 inline PxMATRIX::PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B) : Adafruit_GFX(width+ADAFRUIT_GFX_EXTRA, height)
 {
-  init(width, height, LATCH, OE, A, B);
+  init(width, height);
 }
 
 inline PxMATRIX::PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B,uint8_t C) : Adafruit_GFX(width+ADAFRUIT_GFX_EXTRA, height)
 {
-  _C_PIN = C;
-  init(width, height, LATCH, OE, A, B);
+  init(width, height);
 }
 
 inline PxMATRIX::PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B,uint8_t C,uint8_t D) : Adafruit_GFX(width+ADAFRUIT_GFX_EXTRA, height)
 {
-  _C_PIN = C;
-  _D_PIN = D;
-  init(width, height, LATCH, OE, A, B);
+  init(width, height);
 }
 
 inline PxMATRIX::PxMATRIX(uint16_t width, uint16_t height,uint8_t LATCH, uint8_t OE, uint8_t A,uint8_t B,uint8_t C,uint8_t D, uint8_t E) : Adafruit_GFX(width+ADAFRUIT_GFX_EXTRA, height)
 {
-  _C_PIN = C;
-  _D_PIN = D;
-  _E_PIN = E;
-  init(width, height, LATCH, OE, A, B);
+  init(width, height);
 }
 
 inline void PxMATRIX::drawPixel(int16_t x, int16_t y, uint16_t color) {
@@ -973,30 +789,20 @@ inline void PxMATRIX::begin()
 
 void PxMATRIX::begin(uint8_t row_pattern, uint8_t CLK, uint8_t MOSI, uint8_t MISO, uint8_t SS)
 {
-  
-  _SPI_CLK = CLK;
-  _SPI_MOSI = MOSI;
-  _SPI_MISO = MISO;
-  _SPI_SS = SS;
   begin(row_pattern);
-
 }
 
 void PxMATRIX::spi_init(){
+//	uint32_t mask = ~(SPIMMOSI << SPILMOSI);
+//	uint16_t bits = _send_buffer_size*8 -1;
 
-  #ifdef ESP32
-    SPI.begin(_SPI_CLK, _SPI_MISO, _SPI_MOSI, _SPI_SS);
-  #else
     SPI.begin();
-  #endif
 
-  #if defined(ESP32) || defined(ESP8266)
     SPI.setFrequency(PxMATRIX_SPI_FREQUENCY);
-  #endif
 
     SPI.setDataMode(SPI_MODE0);
     SPI.setBitOrder(MSBFIRST);
-
+//	SPI1U1 = ((SPI1U1 & mask) | (bits << SPILMOSI));
 }
 
 void PxMATRIX::begin(uint8_t row_pattern) {
@@ -1006,7 +812,6 @@ void PxMATRIX::begin(uint8_t row_pattern) {
   _row_pattern=row_pattern;
   if (_row_pattern==4)
     _scan_pattern=ZIGZAG;
-  _mux_pattern = BINARY;
   _color_order=RRGGBB;
 
    
@@ -1018,30 +823,19 @@ void PxMATRIX::begin(uint8_t row_pattern) {
 
   spi_init();
 
-
-  pinMode(_OE_PIN, OUTPUT);
-  pinMode(_LATCH_PIN, OUTPUT);
-  pinMode(_A_PIN, OUTPUT);
-  pinMode(_B_PIN, OUTPUT);
-  digitalWrite(_A_PIN, LOW);
-  digitalWrite(_B_PIN, LOW);
-  digitalWrite(_OE_PIN, HIGH);
-
-  if (_row_pattern >=8)
-  {
-    pinMode(_C_PIN, OUTPUT);
-    digitalWrite(_C_PIN, LOW);
-  }
-  if (_row_pattern >=16)
-  {
-    pinMode(_D_PIN, OUTPUT);
-    digitalWrite(_D_PIN, LOW);
-  }
-  if (_row_pattern >=32)
-  {
-    pinMode(_E_PIN, OUTPUT);
-    digitalWrite(_E_PIN, LOW);
-  }
+  pinMode(GPIO_OE, OUTPUT);
+  pinMode(GPIO_LAT, OUTPUT);
+  pinMode(GPIO_A, OUTPUT);
+  pinMode(GPIO_B, OUTPUT);
+  pinMode(GPIO_C, OUTPUT);
+  pinMode(GPIO_D, OUTPUT);
+  
+  digitalWrite(GPIO_OE, HIGH);
+  digitalWrite(GPIO_LAT, LOW);
+  digitalWrite(GPIO_A, LOW);
+  digitalWrite(GPIO_B, LOW);
+  digitalWrite(GPIO_C, LOW);
+  digitalWrite(GPIO_D, LOW);
 
   // Precompute row offset values
   _row_offset=new uint32_t[_height];
@@ -1050,427 +844,127 @@ void PxMATRIX::begin(uint8_t row_pattern) {
 
 }
 
-void PxMATRIX::set_mux(uint8_t value, bool random_access = false)
-{
-
-  if (_mux_pattern==BINARY)
-  {
-    if (value & 0x01)
-      digitalWrite(_A_PIN,HIGH);
-    else
-      digitalWrite(_A_PIN,LOW);
-    if (_mux_delay_A) delayMicroseconds(_mux_delay_A);
-
-    if (value & 0x02)
-      digitalWrite(_B_PIN,HIGH);
-    else
-      digitalWrite(_B_PIN,LOW);
-    if (_mux_delay_B) delayMicroseconds(_mux_delay_B);
-
-    if (_row_pattern>=8)
-    {
-
-      if (value & 0x04)
-      digitalWrite(_C_PIN,HIGH);
-      else
-      digitalWrite(_C_PIN,LOW);
-      if (_mux_delay_C) delayMicroseconds(_mux_delay_C);
-    }
-
-
-    if (_row_pattern>=16)
-    {
-      if (value & 0x08)
-          digitalWrite(_D_PIN,HIGH);
-      else
-          digitalWrite(_D_PIN,LOW);
-      if (_mux_delay_D) delayMicroseconds(_mux_delay_D);
-    }
-
-    if (_row_pattern>=32)
-    {
-      if (value & 0x10)
-          digitalWrite(_E_PIN,HIGH);
-      else
-          digitalWrite(_E_PIN,LOW);
-      if (_mux_delay_E) delayMicroseconds(_mux_delay_E);
-    }
-  }
-
-  if (_mux_pattern==STRAIGHT)
-  {
-    if (value==0)
-      digitalWrite(_A_PIN,LOW);
-    else
-      digitalWrite(_A_PIN,HIGH);
-
-    if (value==1)
-      digitalWrite(_B_PIN,LOW);
-    else
-      digitalWrite(_B_PIN,HIGH);
-
-    if (value==2)
-      digitalWrite(_C_PIN,LOW);
-    else
-      digitalWrite(_C_PIN,HIGH);
-
-    if (value==3)
-      digitalWrite(_D_PIN,LOW);
-    else
-      digitalWrite(_D_PIN,HIGH);
-  }
-
-  if (_mux_pattern==SHIFTREG_SPI_SE) {
-    // A, B, C on Panel are connected to a shift register Clock, /enable, Data
-    uint8_t rowmask[4] = {0,0,0,0};
-    if(_row_pattern > 16) {
-      rowmask[(31-value)/8] = (1<<(value%8));
-      SPI_TRANSFER(rowmask,4);
-    } else {
-      rowmask[(15-value)/8] = (1<<(value%8));
-      SPI_TRANSFER(rowmask,2);
-    }
-  }
-
-  if (_mux_pattern==SHIFTREG_ABC) {
-    // A,B,C are connected to a shift register Clock, /Enable, Data
-    if(random_access) {
-      // Clock out all row mux bits to make sure random access is possible
-      uint8_t r = _row_pattern;
-      while(r-- > 0) {
-        digitalWrite(_C_PIN, (value==r) ); // Shift out 1 for selected row
-        digitalWrite(_A_PIN, HIGH); // Clock out this bit
-        digitalWrite(_A_PIN, LOW);
-      }
-    } else {
-      // Just shift the row mux by one for incremental access
-      digitalWrite(_C_PIN, (value==0) ); // Shift out 1 for line 0, 0 otherwise
-      digitalWrite(_A_PIN, HIGH); // Clock out this bit
-      digitalWrite(_A_PIN, LOW);
-    }
-  }
-
-  if (_mux_pattern==SHIFTREG_ABC_BIN_DE) {
-    // A-C are connected to Shift-Register Clock, Data, /Enable, D-E to binary decoder (crazy shit)
-    // Shift-Register is 8 rows wide, D-E select different Blocks of 8 rows
-    digitalWrite(_D_PIN, (value>>3)&1 );
-    digitalWrite(_E_PIN, (value>>4)&1 );
-    value = value % 8;
-    if(random_access) {
-      // Clock out all row mux bits to make sure random access is possible
-      uint8_t r = 8;
-      while(r-- > 0) {
-        digitalWrite(_B_PIN, (value==r) ); // Shift out 1 for selected row
-        digitalWrite(_A_PIN, HIGH); // Clock out this bit
-        digitalWrite(_A_PIN, LOW);
-      }
-    } else {
-      // Just shift the row mux by one for incremental access
-      digitalWrite(_B_PIN, (value==0) ); // Shift out 1 for line 0, 0 otherwise
-      digitalWrite(_A_PIN, HIGH); // Clock out this bit
-      digitalWrite(_A_PIN, LOW);
-    }
-  }
-
+inline void PxMATRIX::initLatchSeq(){
+	for(uint8_t i = 0; i <PxMATRIX_COLOR_DEPTH;i++)
+		// Lacth = cycle de pause 
+		// Latch = 5*durée(en microseconde) = durée(en nanoseconde)/200
+		// 200 nanoseconde = durée d'un cycle de timer pour TIM_DIV16
+		_latch_seq[i] = 5*((PxMATRIX_SHOWTIME*(1<<i)*_brightness)/255/2);
 }
 
-void PxMATRIX::latch(uint16_t show_time )
-{
-
-  if (_driver_chip==SHIFT)
-  {
-    //digitalWrite(_OE_PIN,0); // <<< remove this
-    digitalWrite(_LATCH_PIN,HIGH);
-    //delayMicroseconds(10);
-    digitalWrite(_LATCH_PIN,LOW);
-
-    //delayMicroseconds(10);
-    if (show_time >0)
-    {
-      //delayMicroseconds(show_time);
-      digitalWrite(_OE_PIN,0);
-      unsigned long start_time=micros();
-      while ((micros()-start_time)<show_time)
-        asm volatile (" nop ");
-      digitalWrite(_OE_PIN,1);
-    }
-
-
-
-  }
-
-  if (_driver_chip == FM6124 || _driver_chip==FM6126A)
-  {
-    //digitalWrite(_OE_PIN,0); // <<< remove this
-    digitalWrite(_LATCH_PIN,LOW);
-    digitalWrite(_SPI_CLK,LOW);
-    for (uint8_t latch_count=0; latch_count<3; latch_count++)
-    {
-      digitalWrite(_SPI_CLK,HIGH);
-      delayMicroseconds(1);
-      digitalWrite(_SPI_CLK,LOW);
-      delayMicroseconds(1);
-    }
-    digitalWrite(_LATCH_PIN,HIGH);
-    digitalWrite(_OE_PIN,0); //<<<< insert this
-    delayMicroseconds(show_time);
-    digitalWrite(_OE_PIN,1);
-  }
+inline void PxMATRIX::display_enable(){
+	noInterrupts();
+	timer1_isr_init();
+	timer1_attachInterrupt(PxMATRIX::displayCallback);
+	timer1_enable(TIM_DIV16,TIM_EDGE,TIM_LOOP);
+	timer1_write(5000); // 1ms
+	interrupts();
 }
 
- void PxMATRIX::display()
-{
-  display(PxMATRIX_DEFAULT_SHOWTIME);
+inline void PxMATRIX::display_disable(){
+	timer1_disable();
 }
 
-void PxMATRIX::display(uint16_t show_time) {
-  if (show_time == 0)
-    show_time =1;
-  
-  // How long do we keep the pixels on
-  uint16_t latch_time = ((show_time*(1<<_display_color)*_brightness)/255/2);
+PxMATRIX *PxMATRIX::_instance = NULL;
 
-  unsigned long start_time=0;
-#ifdef ESP8266
-  ESP.wdtFeed();
-#endif
+inline void PxMATRIX::displayCallback() {
+//	if (PxMATRIX::_instance) //Forcément affecté
+//		PxMATRIX::_instance->displayTimer();
+		PxMATRIX::_instance->displayTimerChrono();
+}
 
-uint8_t *PxMATRIX_bufferp = PxMATRIX_buffer;
+/* asm-helpers */
+static inline int32_t asm_ccount(void) {
+    int32_t r; asm volatile ("rsr %0, ccount" : "=r"(r)); return r; }
+	
+inline uint32_t PxMATRIX::testCycle(){
+	uint32_t deb = asm_ccount();
+	displayTimer();
+	return asm_ccount() - deb;
+}
+
+inline void PxMATRIX::displayTimerChrono(){
+	noInterrupts();
+	uint32_t deb = asm_ccount();
+	displayTimer();
+	cycleTotal = asm_ccount() - deb;
+	interrupts();
+	
+	if (cycleTotal>cycleTotalMax)
+		cycleTotalMax = cycleTotal;
+	if (cycleTotal<cycleTotalMin)
+		cycleTotalMin = cycleTotal;
+	
+/*
+	// Calcul du temps total pour afficher une image compléte (16*Nbcouleur)
+	cycleTotalTemp += ESP.getCycleCount() - deb;
+	if (_display_row==0 && _display_color==0){
+		cycleTotal = cycleTotalTemp;
+		if (cycleTotal>cycleTotalMax)
+			cycleTotalMax = cycleTotal;
+		if (cycleTotal<cycleTotalMin)
+			cycleTotalMin = cycleTotal;
+		cycleTotalTemp = 0;
+	}
+	*/
+}
+inline void PxMATRIX::serialInfo(){
+	Serial.printf("CPU : %d MHz (CPU2X=%x)\r\n", CPU2X & 1?160:80,CPU2X);
+	Serial.println("Sequence : ");
+	for(uint8_t i = 0; i <PxMATRIX_COLOR_DEPTH;i++)
+		Serial.printf("\t%d (us) %d (cycles)\r\n", _latch_seq[i]/5, _latch_seq[i]*(CPU2X?160:80)/5);
+}
+
+inline void PxMATRIX::serialCycleCount(){
+	Serial.printf("%d\t%d\t%d\r\n", cycleTotal, cycleTotalMin, cycleTotalMax);
+	cycleTotalMin = 0xFFFF;
+	cycleTotalMax = 0;
+}
+
+inline void PxMATRIX::displayTimer(){
+
+//	asm volatile (" nop ");
+	//voir eagle_soc.h
+//  ESP.wdtFeed();
+//	noInterrupts();
+	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS,1<<GPIO_OE);
+	GPIO_REG_WRITE(seq_REG_CMD[_display_row],seq_REG_VAL[_display_row]);
+//	GPIO_REG_WRITE(seq_REG_CMD[temp],seq_REG_VAL[temp]);
+//	GPIO_REG_WRITE(display_seq_current->reg_cmd,display_seq_current->reg_val);
+	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS,1<<GPIO_LAT);
+	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,1<<GPIO_LAT);
+	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,1<<GPIO_OE);
+
+	_display_row++;
+//	temp = _display_row & 0xF;
+//	display_seq_current = &display_seq[_display_row & 0xF];
+ 	if (_display_row == _row_pattern){
+		_display_row = 0; //Calculer le pointeur pour éviter multiplication
+		_display_color++;
+		//_display_color = _display_row>>4;
+		if (_display_color==PxMATRIX_COLOR_DEPTH){
+			//_display_row = 0;
+			_display_color=0;
+		}
+		timer1_write(_latch_seq[_display_color]);
+	}
 
 #ifdef PxMATRIX_DOUBLE_BUFFER
-  PxMATRIX_bufferp = _active_buffer ? PxMATRIX_buffer2 : PxMATRIX_buffer;
-#endif
-
-  for (uint8_t i=0;i<_row_pattern;i++)
-  {
-    if(_driver_chip == SHIFT) {
-      if ((_fast_update)&&(_brightness==255)){
-
-        // This will clock data into the display while the outputs are still
-        // latched (LEDs on). We therefore utilize SPI transfer latency as LED
-        // ON time and can reduce the waiting time (show_time). This is rather
-        // timing sensitive and may lead to flicker however promises reduced
-        // update times and increased brightness
-
-        set_mux(i);
-        digitalWrite(_LATCH_PIN,HIGH);
-        digitalWrite(_LATCH_PIN,LOW);
-        digitalWrite(_OE_PIN,LOW);
-        start_time = micros();
-        delayMicroseconds(1);
-        if (i<_row_pattern-1)
-        {
-          // This pre-buffers the data for the next row pattern of this _display_color
-          SPI_TRANSFER(&PxMATRIX_bufferp[_display_color*_buffer_size+(i+1)*_send_buffer_size],_send_buffer_size);
-        }
-        else 
-        { 
-          // This pre-buffers the data for the first row pattern of the next _display_color
-          SPI_TRANSFER(&PxMATRIX_bufferp[((_display_color+1)%PxMATRIX_COLOR_DEPTH)*_buffer_size],_send_buffer_size); 
-        }
-       
-        while ((micros()-start_time)<latch_time)
-          delayMicroseconds(1);
-        digitalWrite(_OE_PIN,HIGH);
-
-      }
-      else
-      {
-        set_mux(i);
-#ifdef __AVR__
-  uint8_t this_byte;
-  for (uint32_t byte_cnt=0; byte_cnt<_send_buffer_size;byte_cnt++)
-  {
-    this_byte=PxMATRIX_bufferp[_display_color*_buffer_size+i*_send_buffer_size+byte_cnt];
-    SPI_BYTE(this_byte);
-  }
+	uint8_t *PxMATRIX_bufferp = _active_buffer ? PxMATRIX_buffer2 : PxMATRIX_buffer;
 #else
-  SPI_TRANSFER(&PxMATRIX_bufferp[_display_color*_buffer_size+i*_send_buffer_size],_send_buffer_size);
+	uint8_t *PxMATRIX_bufferp = PxMATRIX_buffer;
 #endif
-        latch(latch_time); 
-      }
-    }
-    
-    if (_driver_chip == FM6124 || _driver_chip == FM6126A) // _driver_chip == FM6124
-    {
-    #ifdef ESP32
-
-      GPIO_REG_CLEAR( 1 << _OE_PIN);
-      uint8_t* bf = &PxMATRIX_bufferp[_display_color*_buffer_size+i*_send_buffer_size];
-
-      spi_t * spi = SPI.bus();
-      spiSimpleTransaction(spi);
-
-      spiWriteNL(spi, bf, _send_buffer_size-1);
-      uint8_t v = bf[_send_buffer_size - 1];
-
-      GPIO_REG_SET( 1 << _OE_PIN);
-
-      spi->dev->mosi_dlen.usr_mosi_dbitlen = 4;
-      spi->dev->miso_dlen.usr_miso_dbitlen = 0;
-      spi->dev->data_buf[0] = v;
-      spi->dev->cmd.usr = 1;
-      while(spi->dev->cmd.usr);
-
-      GPIO_REG_SET( 1 << _LATCH_PIN);
-
-      spi->dev->mosi_dlen.usr_mosi_dbitlen = 2;
-      spi->dev->data_buf[0] = v<<5;
-      spi->dev->cmd.usr = 1;
-      while(spi->dev->cmd.usr);
-      GPIO_REG_CLEAR( 1 << _LATCH_PIN);
-
-      spiEndTransaction(spi);
-      set_mux(i);
-    #else
-      #if defined(ESP8266) || defined(ESP32)
-        pinMode(_SPI_CLK, SPECIAL);
-        pinMode(_SPI_MOSI, SPECIAL);
-      #endif
-      SPI_TRANSFER(&PxMATRIX_bufferp[_display_color*_buffer_size+i*_send_buffer_size],_send_buffer_size-1);
-      pinMode(_SPI_CLK, OUTPUT);
-      pinMode(_SPI_MOSI, OUTPUT);
-      pinMode(_SPI_MISO, OUTPUT);
-      pinMode(_SPI_SS, OUTPUT);
-      set_mux(i);
-
-      uint8_t v = PxMATRIX_bufferp[_display_color*_buffer_size+i*_send_buffer_size + _send_buffer_size - 1];
-      for (uint8_t this_byte = 0; this_byte < 8; this_byte++) {
-        if (((v >> (7 - this_byte)) & 1))
-          GPIO_REG_SET( 1 << _SPI_MOSI);
-        else
-          GPIO_REG_CLEAR( 1 << _SPI_MOSI);
-        GPIO_REG_SET( 1 << _SPI_CLK);
-        GPIO_REG_CLEAR( 1 << _SPI_CLK);
-
-        if (this_byte == 4)
-          //GPIO_REG_SET( 1 << _LATCH_PIN);
-          digitalWrite(_LATCH_PIN, HIGH);
-      }
-      //GPIO_REG_WRITE(GPIO_  spi_init();
-
-      digitalWrite(_LATCH_PIN, LOW);
-      //GPIO_REG_SET( 1 << _OE_PIN);
-      digitalWrite(_OE_PIN, 0); //<<<< insert this
-      unsigned long start_time = micros();
-
-      while ((micros()-start_time)<latch_time)
-        delayMicroseconds(1);
-      //GPIO_REG_CLEAR( 1 << _OE_PIN);
-      digitalWrite(_OE_PIN, 1);
-      //latch(show_time*(uint16_t)_brightness/255);
-    #endif
-    }
-  }
-  _display_color++;
-  if (_display_color>=PxMATRIX_COLOR_DEPTH)
-  {
-    _display_color=0;
-  }
+//	memcpy((void *)&SPI1W0,&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[temp]*_send_buffer_size],_send_buffer_size);
+//	memcpy((void *)&SPI1W0,&PxMATRIX_bufferp[_display_color*_buffer_size+display_seq_current->row*_send_buffer_size],_send_buffer_size);
+//	SPI1CMD |= SPIBUSY;
+//	SPI_TRANSFER(&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[temp]*_send_buffer_size],_send_buffer_size);
+	SPI_TRANSFER(&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[_display_row]*_send_buffer_size],_send_buffer_size);
+//	interrupts();
 }
 
 void PxMATRIX::flushDisplay(void) {
   for (int ii=0;ii<_send_buffer_size;ii++)
     SPI_BYTE(0x00);
-}
-
-void PxMATRIX::displayTestPattern(uint16_t show_time) {
-
-  if ((millis()-_test_last_call)>500)
-  {
-    flushDisplay();
-    for (int ii=0;ii<=_test_pixel_counter;ii++)
-      SPI_BYTE(0xFF);
-    _test_last_call=millis();
-    _test_pixel_counter++;
-  }
-
-  if (_test_pixel_counter>_send_buffer_size)
-
-  {
-    _test_pixel_counter=0;
-    _test_line_counter++;
-    flushDisplay();
-  }
-
-  if (_test_line_counter> (_height/2))
-        _test_line_counter=0;
-
-  digitalWrite(_A_PIN,HIGH);
-  delayMicroseconds(1);
-  digitalWrite(_B_PIN,HIGH);
-  delayMicroseconds(1);
-  digitalWrite(_C_PIN,HIGH);
-  delayMicroseconds(1);
-  digitalWrite(_D_PIN,HIGH);
-  delayMicroseconds(1);
-  digitalWrite(_E_PIN,HIGH);
-  delayMicroseconds(1);
-
-  digitalWrite(_A_PIN,LOW);
-  delayMicroseconds(1);
-  digitalWrite(_B_PIN,LOW);
-  delayMicroseconds(1);
-  digitalWrite(_C_PIN,LOW);
-  delayMicroseconds(1);
-  digitalWrite(_D_PIN,LOW);
-  delayMicroseconds(1);
-  digitalWrite(_E_PIN,LOW);
-  delayMicroseconds(1);
-  set_mux(_test_line_counter, true);
-
-  latch(show_time);
-}
-
-void PxMATRIX::displayTestPixel(uint16_t show_time) {
-  if ((millis()-_test_last_call)>500)
-  {
-    flushDisplay();
-    uint16_t blanks = _test_pixel_counter/8;
-    SPI_BYTE(1<<_test_pixel_counter%8);
-    while (blanks){
-      SPI_BYTE(0x00);
-      blanks--;
-    }
-    _test_last_call=millis();
-    _test_pixel_counter++;
-  }
-
-  if (_test_pixel_counter>_send_buffer_size/3*8)
-
-  {
-    _test_pixel_counter=0;
-    _test_line_counter++;
-  }
-
-  if (_test_line_counter> (_height/2))
-        _test_line_counter=0;
-
-  digitalWrite(_A_PIN,HIGH);
-  delayMicroseconds(1);
-  digitalWrite(_B_PIN,HIGH);
-  delayMicroseconds(1);
-  digitalWrite(_C_PIN,HIGH);
-  delayMicroseconds(1);
-  digitalWrite(_D_PIN,HIGH);
-  delayMicroseconds(1);
-  digitalWrite(_E_PIN,HIGH);
-  delayMicroseconds(1);
-
-  digitalWrite(_A_PIN,LOW);
-  delayMicroseconds(1);
-  digitalWrite(_B_PIN,LOW);
-  delayMicroseconds(1);
-  digitalWrite(_C_PIN,LOW);
-  delayMicroseconds(1);
-  digitalWrite(_D_PIN,LOW);
-  delayMicroseconds(1);
-  digitalWrite(_E_PIN,LOW);
-  delayMicroseconds(1);
-
-  set_mux(_test_line_counter, true);
-
-  latch(show_time);
 }
 
 void PxMATRIX::clearDisplay(void) {
