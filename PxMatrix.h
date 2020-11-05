@@ -104,8 +104,9 @@ enum color_orders {RRGGBB, RRBBGG, GGRRBB, GGBBRR, BBRRGG, BBGGRR};
 
 
 // Total number of bytes that is pushed to the display at a time
-// 3 * _pattern_color_bytes
+// 3 * PATTERN_COLOR_BYTES
 #define	BUFFER_SIZE				(PxMATRIX_HEIGHT*PxMATRIX_WIDTH*3/8)
+// Number of bytes in one color
 #define PATTERN_COLOR_BYTES 	((PxMATRIX_HEIGHT/PxMATRIX_ROW_PATTERN)*(PxMATRIX_WIDTH/8))
 #define SEND_BUFFER_SIZE		(PATTERN_COLOR_BYTES*3)
 //#define ROW_SETS_PER_BUFFER		_rows_per_buffer/PxMATRIX_ROW_PATTERN)
@@ -200,12 +201,6 @@ class PxMATRIX : public Adafruit_GFX {
   // Holds some pre-computed values for faster pixel drawing
   uint32_t *_row_offset;
 
-  // Number of bytes in one color
-  uint8_t _pattern_color_bytes;
-
-  // Total number of bytes that is pushed to the display at a time
-  // 3 * _pattern_color_bytes
-  uint16_t _buffer_size;
 
   // This is for double buffering
   bool _active_buffer;
@@ -224,7 +219,6 @@ class PxMATRIX : public Adafruit_GFX {
   block_patterns _block_pattern;
 
 	uint8_t _display_row = 0;
-	uint8_t temp = 0;
 	uint16_t _latch_seq[PxMATRIX_COLOR_DEPTH];
 	static PxMATRIX *_instance;
 	static void displayCallback();
@@ -322,9 +316,6 @@ inline void init();
 
 inline void spi_init();
 
-// Write configuration register in some driver chips
-inline void writeRegister(uint16_t reg_value, uint8_t reg_position);
-inline void fm612xWriteRegister(uint16_t reg_value, uint8_t reg_position);
 };
 
 // Pass 8-bit (each) R,G,B, get back 16-bit packed color
@@ -338,8 +329,6 @@ inline void PxMATRIX::init(){
 
 	_display_row = 0;
 	_display_color=0;
-
-  _buffer_size = (PxMATRIX_WIDTH*PxMATRIX_HEIGHT * 3 / 8);
 
   _brightness=255;
   _panels_width = 1;
@@ -361,9 +350,9 @@ inline void PxMATRIX::init(){
   	
 	initLatchSeq();
 
-    PxMATRIX_buffer= new uint8_t[PxMATRIX_COLOR_DEPTH*_buffer_size];
+    PxMATRIX_buffer= new uint8_t[PxMATRIX_COLOR_DEPTH*BUFFER_SIZE];
   #ifdef PxMATRIX_DOUBLE_BUFFER
-    PxMATRIX_buffer2=new uint8_t[PxMATRIX_COLOR_DEPTH*_buffer_size];
+    PxMATRIX_buffer2=new uint8_t[PxMATRIX_COLOR_DEPTH*BUFFER_SIZE];
   #endif
 
 }
@@ -420,9 +409,9 @@ inline void PxMATRIX::copyBuffer(bool reverse = false) {
   // You may need this in case you rely on the framebuffer to always contain the last frame
   // _active_buffer = true means that PxMATRIX_buffer2 is displayed
   if(_active_buffer ^ reverse) {
-    memcpy(PxMATRIX_buffer, PxMATRIX_buffer2, PxMATRIX_COLOR_DEPTH*_buffer_size);
+    memcpy(PxMATRIX_buffer, PxMATRIX_buffer2, PxMATRIX_COLOR_DEPTH*BUFFER_SIZE);
   } else {
-    memcpy(PxMATRIX_buffer2, PxMATRIX_buffer, PxMATRIX_COLOR_DEPTH*_buffer_size);
+    memcpy(PxMATRIX_buffer2, PxMATRIX_buffer, PxMATRIX_COLOR_DEPTH*BUFFER_SIZE);
   }
 }
 #endif
@@ -686,8 +675,8 @@ inline void PxMATRIX::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t 
     }
   }
 
-  total_offset_g=total_offset_r-_pattern_color_bytes;
-  total_offset_b=total_offset_g-_pattern_color_bytes;
+  total_offset_g=total_offset_r-PATTERN_COLOR_BYTES;
+  total_offset_b=total_offset_g-PATTERN_COLOR_BYTES;
 
 uint8_t *PxMATRIX_bufferp = PxMATRIX_buffer;
 
@@ -703,19 +692,19 @@ uint8_t *PxMATRIX_bufferp = PxMATRIX_buffer;
   for (int this_color_bit=0; this_color_bit<PxMATRIX_COLOR_DEPTH; this_color_bit++)
   {
     if ((r >> this_color_bit) & 0x01)
-      PxMATRIX_bufferp[this_color_bit*_buffer_size+total_offset_r] |=_BV(bit_select);
+      PxMATRIX_bufferp[this_color_bit*BUFFER_SIZE+total_offset_r] |=_BV(bit_select);
     else
-      PxMATRIX_bufferp[this_color_bit*_buffer_size+total_offset_r] &= ~_BV(bit_select);
+      PxMATRIX_bufferp[this_color_bit*BUFFER_SIZE+total_offset_r] &= ~_BV(bit_select);
 
     if ((g >> this_color_bit) & 0x01)
-      PxMATRIX_bufferp[this_color_bit*_buffer_size+total_offset_g] |=_BV(bit_select);
+      PxMATRIX_bufferp[this_color_bit*BUFFER_SIZE+total_offset_g] |=_BV(bit_select);
     else
-      PxMATRIX_bufferp[this_color_bit*_buffer_size+total_offset_g] &= ~_BV(bit_select);
+      PxMATRIX_bufferp[this_color_bit*BUFFER_SIZE+total_offset_g] &= ~_BV(bit_select);
 
     if ((b >> this_color_bit) & 0x01)
-      PxMATRIX_bufferp[this_color_bit*_buffer_size+total_offset_b] |=_BV(bit_select);
+      PxMATRIX_bufferp[this_color_bit*BUFFER_SIZE+total_offset_b] |=_BV(bit_select);
     else
-      PxMATRIX_bufferp[this_color_bit*_buffer_size+total_offset_b] &= ~_BV(bit_select);
+      PxMATRIX_bufferp[this_color_bit*BUFFER_SIZE+total_offset_b] &= ~_BV(bit_select);
   }
 }
 
@@ -762,8 +751,7 @@ void PxMATRIX::begin() {
     _scan_pattern=ZIGZAG;
   _color_order=RRGGBB;
 
-   
-  _pattern_color_bytes=(PxMATRIX_HEIGHT/PxMATRIX_ROW_PATTERN)*(PxMATRIX_WIDTH/8);
+
   _row_sets_per_buffer = _rows_per_buffer/PxMATRIX_ROW_PATTERN;
 
 
@@ -858,12 +846,12 @@ inline void PxMATRIX::displayTimerChrono(){
 }
 inline void PxMATRIX::serialInfo(){
 	Serial.printf("CPU : %d MHz (CPU2X=%x)\r\n", CPU2X & 1?160:80,CPU2X);
-	Serial.printf("Height             \t(null)\t%d\r\n",PxMATRIX_HEIGHT);
-	Serial.printf("Width              \t(null)\t%d\r\n",PxMATRIX_WIDTH);
-	Serial.printf("Row pattern        \t(null)\t%d\r\n",PxMATRIX_ROW_PATTERN);
-	Serial.printf("Buffer size        \t%d\t%d\r\n",_buffer_size,BUFFER_SIZE);	
-	Serial.printf("Pattern color bytes\t%d\t%d\r\n",_pattern_color_bytes,PATTERN_COLOR_BYTES);
-	Serial.printf("Send buffer size   \t(null)\t%d\r\n",SEND_BUFFER_SIZE);
+	Serial.printf("Height             \t%d\r\n",PxMATRIX_HEIGHT);
+	Serial.printf("Width              \t%d\r\n",PxMATRIX_WIDTH);
+	Serial.printf("Row pattern        \t%d\r\n",PxMATRIX_ROW_PATTERN);
+	Serial.printf("Buffer size        \t%d\r\n",BUFFER_SIZE);	
+	Serial.printf("Pattern color bytes\t%d\r\n",PATTERN_COLOR_BYTES);
+	Serial.printf("Send buffer size   \t%d\r\n",SEND_BUFFER_SIZE);
 //	Serial.printf("Row sets per buffer\t%d\t%d\r\n",_row_sets_per_buffer);
 //	Serial.printf("\t%d\t%d\r\n",);
 	Serial.println("Sequence :");
@@ -901,7 +889,7 @@ inline void PxMATRIX::displayTimer(){
 #else
 	uint8_t *PxMATRIX_bufferp = PxMATRIX_buffer;
 #endif
-	memcpy((void *)&SPI1W0,&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[_display_row]*SEND_BUFFER_SIZE],SEND_BUFFER_SIZE);
+	memcpy((void *)&SPI1W0,&PxMATRIX_bufferp[_display_color*BUFFER_SIZE+seq_ROW_ID[_display_row]*SEND_BUFFER_SIZE],SEND_BUFFER_SIZE);
 	SPI1CMD |= SPIBUSY;
 //	interrupts();
 }
@@ -924,11 +912,11 @@ void PxMATRIX::clearDisplay(void) {
 void PxMATRIX::clearDisplay(bool selected_buffer) {
 #ifdef PxMATRIX_DOUBLE_BUFFER
   if(selected_buffer)
-    memset(PxMATRIX_buffer2, 0, PxMATRIX_COLOR_DEPTH*_buffer_size);
+    memset(PxMATRIX_buffer2, 0, PxMATRIX_COLOR_DEPTH*BUFFER_SIZE);
   else
-    memset(PxMATRIX_buffer, 0, PxMATRIX_COLOR_DEPTH*_buffer_size);
+    memset(PxMATRIX_buffer, 0, PxMATRIX_COLOR_DEPTH*BUFFER_SIZE);
 #else
-    memset(PxMATRIX_buffer, 0, PxMATRIX_COLOR_DEPTH*_buffer_size);
+    memset(PxMATRIX_buffer, 0, PxMATRIX_COLOR_DEPTH*BUFFER_SIZE);
 #endif
 }
 
