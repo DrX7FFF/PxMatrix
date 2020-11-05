@@ -88,11 +88,6 @@ BSD license, check license.txt for more information
 #define ADAFRUIT_GFX_EXTRA 0
 #endif
 
-
-#define GPIO_REG_SET(val) GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS,val)
-#define GPIO_REG_CLEAR(val) GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,val)
-
-
 // Specifies what blocking pattern the panel is using 
 // |AB|,|DB|
 // |CD|,|CA|
@@ -108,11 +103,6 @@ enum scan_patterns {LINE, ZIGZAG,ZZAGG, ZAGGIZ, WZAGZIG, VZAG, ZAGZIG, WZAGZIG2,
 enum color_orders {RRGGBB, RRBBGG, GGRRBB, GGBBRR, BBRRGG, BBGGRR};
 
 
-#define color_step (256 / PxMATRIX_COLOR_DEPTH)
-#define color_half_step (int(color_step / 2))
-#define color_third_step (int(color_step / 3))
-#define color_two_third_step (int(color_third_step*2))
-
 // Total number of bytes that is pushed to the display at a time
 // 3 * _pattern_color_bytes
 #define	BUFFER_SIZE				(PxMATRIX_HEIGHT*PxMATRIX_WIDTH*3/8)
@@ -124,7 +114,6 @@ class PxMATRIX : public Adafruit_GFX {
  public:
   inline PxMATRIX(uint16_t width, uint16_t height);
 
-  inline void begin(uint8_t row_pattern);
   inline void begin();
 
   inline void clearDisplay(void);
@@ -192,8 +181,6 @@ class PxMATRIX : public Adafruit_GFX {
   uint8_t *PxMATRIX_buffer2;
 #endif
 
-  uint16_t _width;
-  uint16_t _height;
   uint8_t _panels_width;
   uint8_t _rows_per_buffer;
   uint8_t _row_sets_per_buffer;
@@ -213,16 +200,12 @@ class PxMATRIX : public Adafruit_GFX {
   // Holds some pre-computed values for faster pixel drawing
   uint32_t *_row_offset;
 
-  // Holds the display row pattern type
-  uint8_t _row_pattern;
-
   // Number of bytes in one color
   uint8_t _pattern_color_bytes;
 
   // Total number of bytes that is pushed to the display at a time
   // 3 * _pattern_color_bytes
   uint16_t _buffer_size;
-  uint16_t _send_buffer_size;
 
   // This is for double buffering
   bool _active_buffer;
@@ -335,7 +318,7 @@ class PxMATRIX : public Adafruit_GFX {
 inline void fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t g,uint8_t b, bool selected_buffer);
 
   // Init code common to both constructors
-inline void init(uint16_t width, uint16_t height);
+inline void init();
 
 inline void spi_init();
 
@@ -350,22 +333,19 @@ inline uint16_t PxMATRIX::color565(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 // Init code common to both constructors
-inline void PxMATRIX::init(uint16_t width, uint16_t height){
+inline void PxMATRIX::init(){
 	_instance = this;
 
 	_display_row = 0;
 	_display_color=0;
 
-  _width = width;
-  _height = height;
-
-  _buffer_size = (_width*_height * 3 / 8);
+  _buffer_size = (PxMATRIX_WIDTH*PxMATRIX_HEIGHT * 3 / 8);
 
   _brightness=255;
   _panels_width = 1;
 
-  _rows_per_buffer = _height/2;
-  _panel_width_bytes = (_width/_panels_width)/8;
+  _rows_per_buffer = PxMATRIX_HEIGHT/2;
+  _panel_width_bytes = (PxMATRIX_WIDTH/_panels_width)/8;
 
   _active_buffer=false;
 
@@ -376,7 +356,6 @@ inline void PxMATRIX::init(uint16_t width, uint16_t height){
   _rotate=0;
   _flip=0;
 
-  _row_pattern=0;
   _scan_pattern=LINE;
   _block_pattern=ABCD;
   	
@@ -406,7 +385,7 @@ inline void PxMATRIX::setBlockPattern(block_patterns block_pattern)
 
 inline void PxMATRIX::setPanelsWidth(uint8_t panels) {
   _panels_width=panels;
-  _panel_width_bytes = (_width/_panels_width)/8;
+  _panel_width_bytes = (PxMATRIX_WIDTH/_panels_width)/8;
 }
 
 inline void PxMATRIX::setRotate(bool rotate) {
@@ -424,7 +403,7 @@ inline void PxMATRIX::setBrightness(uint8_t brightness) {
 
 inline PxMATRIX::PxMATRIX(uint16_t width, uint16_t height) : Adafruit_GFX(width+ADAFRUIT_GFX_EXTRA, height)
 {
-  init(width, height);
+  init();
 }
 
 inline void PxMATRIX::drawPixel(int16_t x, int16_t y, uint16_t color) {
@@ -485,30 +464,30 @@ inline void PxMATRIX::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t 
       
       if (_panels_width>1) // Only works for two panels
       {
-        if ((x>=_width/4) && (x<_width/2))
-          x+=_width/4;
-        else if ((x>=_width/2) && (x<_width*3/4))
-          x-=_width/4;
+        if ((x>=PxMATRIX_WIDTH/4) && (x<PxMATRIX_WIDTH/2))
+          x+=PxMATRIX_WIDTH/4;
+        else if ((x>=PxMATRIX_WIDTH/2) && (x<PxMATRIX_WIDTH*3/4))
+          x-=PxMATRIX_WIDTH/4;
       }
 
-      uint16_t y_block = y*4/_height;
-      uint16_t x_block = x*2*_panels_width/_width;
+      uint16_t y_block = y*4/PxMATRIX_HEIGHT;
+      uint16_t x_block = x*2*_panels_width/PxMATRIX_WIDTH;
 
       // Swapping A & D
       if (!(y_block%2)) // Even y block
       {
         if (!(x_block%2)) // Left side of panel
         {
-          x+=_width/2/_panels_width;
-          y+=_height/4;
+          x+=PxMATRIX_WIDTH/2/_panels_width;
+          y+=PxMATRIX_HEIGHT/4;
          }
       }
       else // Odd y block
       {
         if (x_block%2) // Right side of panel
         {
-          x-=_width/2/_panels_width;
-          y-=_height/4;
+          x-=PxMATRIX_WIDTH/2/_panels_width;
+          y-=PxMATRIX_HEIGHT/4;
          
         } 
       }
@@ -518,14 +497,14 @@ inline void PxMATRIX::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t 
     if (_rotate){
     uint16_t temp_x=x;
     x=y;
-    y=_height-1-temp_x;
+    y=PxMATRIX_HEIGHT-1-temp_x;
   }
 
   // Panels are naturally flipped
   if (!_flip)
-    x =_width - 1 -x;
+    x =PxMATRIX_WIDTH - 1 -x;
   
-  if ((x < 0) || (x >= _width) || (y < 0) || (y >= _height))
+  if ((x < 0) || (x >= PxMATRIX_WIDTH) || (y < 0) || (y >= PxMATRIX_HEIGHT))
     return; 
   
   if (_color_order!= RRGGBB)
@@ -554,13 +533,13 @@ inline void PxMATRIX::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t 
   if (_scan_pattern==WZAGZIG || _scan_pattern==VZAG || _scan_pattern==WZAGZIG2)
   {
     // get block coordinates and constraints
-    uint8_t rows_per_buffer = _height/2;
+    uint8_t rows_per_buffer = PxMATRIX_HEIGHT/2;
     uint8_t rows_per_block = rows_per_buffer/2;
     // this is a defining characteristic of WZAGZIG and VZAG:
     // two byte alternating chunks bottom up for WZAGZIG
     // two byte up down down up for VZAG
     uint8_t cols_per_block = 16;
-    uint8_t panel_width = _width/_panels_width;
+    uint8_t panel_width = PxMATRIX_WIDTH/_panels_width;
     uint8_t blocks_x_per_panel = panel_width/cols_per_block;
     uint8_t panel_index = x/panel_width;
     // strip down to single panel coordinates, restored later using panel_index
@@ -603,12 +582,12 @@ inline void PxMATRIX::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t 
     // Precomputed row offset values
     base_offset=_row_offset[y]-(x/8)*2;
     uint8_t row_sector=0;
-    uint16_t row_sector__offset=_width/4;
-    for (uint8_t yy = 0; yy<_height; yy+=2*_row_pattern)
+    uint16_t row_sector__offset=PxMATRIX_WIDTH/4;
+    for (uint8_t yy = 0; yy<PxMATRIX_HEIGHT; yy+=2*PxMATRIX_ROW_PATTERN)
     {
-      if ((yy<=y) && (y<yy+_row_pattern))
+      if ((yy<=y) && (y<yy+PxMATRIX_ROW_PATTERN))
         total_offset_r=base_offset-row_sector__offset*row_sector;
-      if ((yy+_row_pattern<=y) && (y<yy+2*_row_pattern))
+      if ((yy+PxMATRIX_ROW_PATTERN<=y) && (y<yy+2*PxMATRIX_ROW_PATTERN))
         total_offset_r=base_offset-row_sector__offset*row_sector;
 
       row_sector++;
@@ -616,9 +595,9 @@ inline void PxMATRIX::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t 
   }
   else
   {
-    // can only be non-zero when _height/(2 inputs per panel)/_row_pattern > 1
+    // can only be non-zero when PxMATRIX_HEIGHT/(2 inputs per panel)/PxMATRIX_ROW_PATTERN > 1
     // i.e.: 32x32 panel with 1/8 scan (A/B/C lines) -> 32/2/8 = 2
-    uint8_t vert_index_in_buffer = (y%_rows_per_buffer)/_row_pattern; // which set of rows per buffer
+    uint8_t vert_index_in_buffer = (y%_rows_per_buffer)/PxMATRIX_ROW_PATTERN; // which set of rows per buffer
 
     // can only ever be 0/1 since there are only ever 2 separate input sets present for this variety of panels (R1G1B1/R2G2B2)
     uint8_t which_buffer = y/_rows_per_buffer;
@@ -650,7 +629,7 @@ inline void PxMATRIX::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t 
   //
   //
   // In order to make the pattern start on both rows with [0L|0H] we have to add / subtract values to / from total_offset_r and bit_select
-  if ((y%(_row_pattern*2))<_row_pattern)
+  if ((y%(PxMATRIX_ROW_PATTERN*2))<PxMATRIX_ROW_PATTERN)
   {
     // Variant of ZAGZIG pattern with bit oder reversed on lower part (starts on upper part)
     if (_scan_pattern==ZAGGIZ)
@@ -764,15 +743,9 @@ inline uint8_t PxMATRIX::getPixel(int8_t x, int8_t y) {
   return (0);//PxMATRIX_buffer[x+ (y/8)*LCDWIDTH] >> (y%8)) & 0x1;
 }
 
-inline void PxMATRIX::begin()
-{
-  begin(8);
-
-}
-
 void PxMATRIX::spi_init(){
 	uint32_t mask = ~(SPIMMOSI << SPILMOSI);
-	uint16_t bits = _send_buffer_size*8 -1;
+	uint16_t bits = SEND_BUFFER_SIZE*8 -1;
 
     SPI.begin();
 
@@ -783,20 +756,15 @@ void PxMATRIX::spi_init(){
 	SPI1U1 = ((SPI1U1 & mask) | (bits << SPILMOSI));
 }
 
-void PxMATRIX::begin(uint8_t row_pattern) {
+void PxMATRIX::begin() {
 
-
-
-  _row_pattern=row_pattern;
-  if (_row_pattern==4)
+  if (PxMATRIX_ROW_PATTERN==4)
     _scan_pattern=ZIGZAG;
   _color_order=RRGGBB;
 
    
-  _pattern_color_bytes=(_height/_row_pattern)*(_width/8);
-  _row_sets_per_buffer = _rows_per_buffer/_row_pattern;
-  _send_buffer_size=_pattern_color_bytes*3;
-
+  _pattern_color_bytes=(PxMATRIX_HEIGHT/PxMATRIX_ROW_PATTERN)*(PxMATRIX_WIDTH/8);
+  _row_sets_per_buffer = _rows_per_buffer/PxMATRIX_ROW_PATTERN;
 
 
   spi_init();
@@ -816,9 +784,9 @@ void PxMATRIX::begin(uint8_t row_pattern) {
   digitalWrite(GPIO_D, LOW);
 
   // Precompute row offset values
-  _row_offset=new uint32_t[_height];
-  for (uint8_t yy=0; yy<_height;yy++)
-      _row_offset[yy]=((yy)%_row_pattern)*_send_buffer_size+_send_buffer_size-1;
+  _row_offset=new uint32_t[PxMATRIX_HEIGHT];
+  for (uint8_t yy=0; yy<PxMATRIX_HEIGHT;yy++)
+      _row_offset[yy]=((yy)%PxMATRIX_ROW_PATTERN)*SEND_BUFFER_SIZE+SEND_BUFFER_SIZE-1;
 
 }
 
@@ -890,12 +858,12 @@ inline void PxMATRIX::displayTimerChrono(){
 }
 inline void PxMATRIX::serialInfo(){
 	Serial.printf("CPU : %d MHz (CPU2X=%x)\r\n", CPU2X & 1?160:80,CPU2X);
-	Serial.printf("Height             \t%d\t%d\r\n",_height,PxMATRIX_HEIGHT);
-	Serial.printf("Width              \t%d\t%d\r\n",_width,PxMATRIX_WIDTH);
-	Serial.printf("Row pattern        \t%d\t%d\r\n",_row_pattern,PxMATRIX_ROW_PATTERN);
+	Serial.printf("Height             \t(null)\t%d\r\n",PxMATRIX_HEIGHT);
+	Serial.printf("Width              \t(null)\t%d\r\n",PxMATRIX_WIDTH);
+	Serial.printf("Row pattern        \t(null)\t%d\r\n",PxMATRIX_ROW_PATTERN);
 	Serial.printf("Buffer size        \t%d\t%d\r\n",_buffer_size,BUFFER_SIZE);	
 	Serial.printf("Pattern color bytes\t%d\t%d\r\n",_pattern_color_bytes,PATTERN_COLOR_BYTES);
-	Serial.printf("Send buffer size   \t%d\t%d\r\n",_send_buffer_size,SEND_BUFFER_SIZE);
+	Serial.printf("Send buffer size   \t(null)\t%d\r\n",SEND_BUFFER_SIZE);
 //	Serial.printf("Row sets per buffer\t%d\t%d\r\n",_row_sets_per_buffer);
 //	Serial.printf("\t%d\t%d\r\n",);
 	Serial.println("Sequence :");
@@ -919,7 +887,7 @@ inline void PxMATRIX::displayTimer(){
 	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,1<<GPIO_OE);
 
 	_display_row++;
- 	if (_display_row == _row_pattern){
+ 	if (_display_row == PxMATRIX_ROW_PATTERN){
 		_display_row = 0; //Calculer le pointeur pour éviter multiplication
 		_display_color++;
 		if (_display_color==PxMATRIX_COLOR_DEPTH){
@@ -933,13 +901,13 @@ inline void PxMATRIX::displayTimer(){
 #else
 	uint8_t *PxMATRIX_bufferp = PxMATRIX_buffer;
 #endif
-	memcpy((void *)&SPI1W0,&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[_display_row]*_send_buffer_size],_send_buffer_size);
+	memcpy((void *)&SPI1W0,&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[_display_row]*SEND_BUFFER_SIZE],SEND_BUFFER_SIZE);
 	SPI1CMD |= SPIBUSY;
 //	interrupts();
 }
 
 void PxMATRIX::flushDisplay(void) {
-  for (int ii=0;ii<_send_buffer_size;ii++)
+  for (int ii=0;ii<SEND_BUFFER_SIZE;ii++)
     SPI_BYTE(0x00);
 }
 
