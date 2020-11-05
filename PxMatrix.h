@@ -31,7 +31,7 @@ BSD license, check license.txt for more information
 
 // Color depth per primary color - the more the slower the update
 #ifndef PxMATRIX_COLOR_DEPTH
-#define PxMATRIX_COLOR_DEPTH 4
+#define PxMATRIX_COLOR_DEPTH 6
 #endif
 #if PxMATRIX_COLOR_DEPTH > 8 || PxMATRIX_COLOR_DEPTH < 1
 #error "PxMATRIX_COLOR_DEPTH must be 1 to 8 bits maximum"
@@ -131,7 +131,7 @@ class PxMATRIX : public Adafruit_GFX {
   inline void clearDisplay(bool selected_buffer);
 
 	inline void display_enable();
-	inline void display_disable();
+	inline void disable();
 	inline uint32_t testCycle();
 	inline void serialCycleCount();
 	inline void serialInfo();
@@ -839,8 +839,10 @@ inline void PxMATRIX::display_enable(){
 	interrupts();
 }
 
-inline void PxMATRIX::display_disable(){
+inline void PxMATRIX::disable(){
+	noInterrupts();
 	timer1_disable();
+	interrupts();
 }
 
 PxMATRIX *PxMATRIX::_instance = NULL;
@@ -909,26 +911,18 @@ inline void PxMATRIX::serialCycleCount(){
 
 inline void PxMATRIX::displayTimer(){
 
-//	asm volatile (" nop ");
-	//voir eagle_soc.h
-//  ESP.wdtFeed();
 //	noInterrupts();
 	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS,1<<GPIO_OE);
 	GPIO_REG_WRITE(seq_REG_CMD[_display_row],seq_REG_VAL[_display_row]);
-//	GPIO_REG_WRITE(seq_REG_CMD[temp],seq_REG_VAL[temp]);
-//	GPIO_REG_WRITE(display_seq_current->reg_cmd,display_seq_current->reg_val);
 	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS,1<<GPIO_LAT);
 	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,1<<GPIO_LAT);
+	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,1<<GPIO_OE);
 
 	_display_row++;
-//	temp = _display_row & 0xF;
-//	display_seq_current = &display_seq[_display_row & 0xF];
  	if (_display_row == _row_pattern){
 		_display_row = 0; //Calculer le pointeur pour éviter multiplication
 		_display_color++;
-		//_display_color = _display_row>>4;
 		if (_display_color==PxMATRIX_COLOR_DEPTH){
-			//_display_row = 0;
 			_display_color=0;
 		}
 		timer1_write(_latch_seq[_display_color]);
@@ -939,13 +933,8 @@ inline void PxMATRIX::displayTimer(){
 #else
 	uint8_t *PxMATRIX_bufferp = PxMATRIX_buffer;
 #endif
-//	memcpy((void *)&SPI1W0,&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[temp]*_send_buffer_size],_send_buffer_size);
-//	memcpy((void *)&SPI1W0,&PxMATRIX_bufferp[_display_color*_buffer_size+display_seq_current->row*_send_buffer_size],_send_buffer_size);
 	memcpy((void *)&SPI1W0,&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[_display_row]*_send_buffer_size],_send_buffer_size);
 	SPI1CMD |= SPIBUSY;
-//	SPI_TRANSFER(&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[temp]*_send_buffer_size],_send_buffer_size);
-//	SPI_TRANSFER(&PxMATRIX_bufferp[_display_color*_buffer_size+seq_ROW_ID[_display_row]*_send_buffer_size],_send_buffer_size);
-	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,1<<GPIO_OE);
 //	interrupts();
 }
 
