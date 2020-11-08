@@ -39,14 +39,14 @@
 #define RGBMATRIX_COLOR_DEPTH 6
 #endif
 
-#define RGBMATRIX_DOUBLE_BUFFER true
+//#define RGBMATRIX_DOUBLE_BUFFER true
 
 // Technique param 
 //30 avec 6bits = 66 img/s
 //25 avec 6bits = 79 img/s
 //25 avec 8bits = 20 img/s
 //15 avec 8bits = 32 img/s mais sintillement
-#define RGBMATRIX_SHOWTIME 30
+#define RGBMATRIX_SHOWTIME 50 //entre 50 et 25K
 
 // Defines the speed of the SPI bus (reducing this may help if you experience noisy images)
 #ifndef RGBMATRIX_SPI_FREQUENCY
@@ -110,14 +110,22 @@ enum color_orders { RRGGBB,
 
 class ESP8266RGBMatrix : public Adafruit_GFX {
 public:
+	uint8_t getRow() {return _display_row;};
+	uint8_t getColor() {return _display_color;};
+	uint16_t getLayerTime() {return _latch_seq[_display_color];};
+
 	ESP8266RGBMatrix();
 	void begin();
-	void enable();
 	void disable();
+	void enable();
+	void enableCallibration();
+	void setMSCalibration(uint32_t speed);
+	static inline void refreshCallback();
+	static inline void refreshCalibrationCallback();
 	inline void refresh();
+	inline void refreshCalibration();
 	void refreshTest();
 	void dumpImgCount();
-	static inline void refreshCallback();
 	void clearDisplay();
 	void clearDisplay(bool selected_buffer);
 	//inline uint8_t* getEditBuffer() { return _edit_buffer; };
@@ -126,8 +134,8 @@ public:
 	void drawPixelRGB888(int16_t x, int16_t y, uint8_t r, uint8_t g, uint8_t b);
 	uint8_t getPixel(int8_t x, int8_t y);                // Does nothing for now (always returns 0)
 	uint16_t color565(uint8_t r, uint8_t g, uint8_t b);  // Converts RGB888 to RGB565
-#ifdef RGBMATRIX_DOUBLE_BUFFER
 	void showBuffer();
+#ifdef RGBMATRIX_DOUBLE_BUFFER
 	void copyBuffer(bool reverse);
 #endif
 
