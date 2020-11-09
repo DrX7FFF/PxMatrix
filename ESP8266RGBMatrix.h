@@ -41,13 +41,6 @@
 
 //#define RGBMATRIX_DOUBLE_BUFFER true
 
-// Technique param 
-//30 avec 6bits = 66 img/s
-//25 avec 6bits = 79 img/s
-//25 avec 8bits = 20 img/s
-//15 avec 8bits = 32 img/s mais sintillement
-#define RGBMATRIX_SHOWTIME 50 //entre 50 et 25K
-
 // Defines the speed of the SPI bus (reducing this may help if you experience noisy images)
 #ifndef RGBMATRIX_SPI_FREQUENCY
 #define RGBMATRIX_SPI_FREQUENCY 20000000
@@ -60,11 +53,13 @@
 #define SEND_BUFFER_SIZE (PATTERN_COLOR_BYTES * 3)
 #define ROWS_PER_BUFFER (RGBMATRIX_HEIGHT / 2)
 #define ROW_SETS_PER_BUFFER	(ROWS_PER_BUFFER / RGBMATRIX_ROW_PATTERN)
+// 5[coefTimer1] * 1 000 000 [en ms] * SEND_BUFFER_SIZE*8 [Bits send] / RGBMATRIX_SPI_FREQUENCY [SPI Debit] 
+//entre 50 et 25K ticks 
+#define RGBMATRIX_MAX_SHOWTICKS (5*1000000*SEND_BUFFER_SIZE*8/RGBMATRIX_SPI_FREQUENCY)
 
 #ifndef _BV
 #define _BV(x) (1 << (x))
 #endif
-#define ROW2PIN(val) ((val & 1 ? 1 << RGBMATRIX_GPIO_A : 0) + (val & 2 ? 1 << RGBMATRIX_GPIO_B : 0) + (val & 4 ? 1 << RGBMATRIX_GPIO_C : 0) + (val & 8 ? 1 << RGBMATRIX_GPIO_D : 0))
 
 #include <SPI.h>
 #include "Adafruit_GFX.h"
@@ -188,6 +183,8 @@ private:
 	// Generic function that draw one pixel
 	void fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t g, uint8_t b, bool selected_buffer);
 
+
+	//TODO utiliser une structure et faire une formule
 	const uint8_t seq_REG_CMD[16] = {
 		GPIO_OUT_W1TS_ADDRESS,
 		GPIO_OUT_W1TS_ADDRESS,

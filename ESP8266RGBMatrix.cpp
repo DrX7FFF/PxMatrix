@@ -69,6 +69,8 @@ void ESP8266RGBMatrix::begin() {
 	DEBUGLOG("Buffer size         %d bytes\r\n", BUFFER_SIZE);
 	DEBUGLOG("Pattern color bytes %d bytes\r\n", PATTERN_COLOR_BYTES);
 	DEBUGLOG("Send buffer size    %d bytes\r\n", SEND_BUFFER_SIZE);
+	DEBUGLOG("Max show time       %d us\r\n", RGBMATRIX_MAX_SHOWTICKS);
+	
 
 	initLatchSeq();
 
@@ -88,12 +90,11 @@ void ESP8266RGBMatrix::init_SPI() {
 //TODO rename latch to layer
 void ESP8266RGBMatrix::initLatchSeq() {
 	// 10000[ms]/ 25[img/s] / 1000[pour se mettre à la mS]
-//	uint32_t showtime = 5*1000*(1000/72)/RGBMATRIX_ROW_PATTERN/((1<<RGBMATRIX_COLOR_DEPTH)-1);
-//	if (showtime < RGBMATRIX_SHOWTIME)
-//		showtime = RGBMATRIX_SHOWTIME;
+	uint32_t showticks = 5*1000*(1000/75)/RGBMATRIX_ROW_PATTERN/((1<<RGBMATRIX_COLOR_DEPTH)-1);
+	if (showticks < RGBMATRIX_MAX_SHOWTICKS)
+		showticks = RGBMATRIX_MAX_SHOWTICKS;
 	DEBUGLOG("Sequence :\r\n");
 
-	uint32_t showtime = RGBMATRIX_SHOWTIME;
 	uint32_t timePerImage = 0;
 	for (uint8_t i = 0; i < RGBMATRIX_COLOR_DEPTH; i++) {
 		// Lacth = cycle de pause
@@ -102,7 +103,7 @@ void ESP8266RGBMatrix::initLatchSeq() {
 		//_latch_seq[i] = 5 * ((RGBMATRIX_SHOWTIME * (1 << i) * _brightness) / 255 / 2);
 		//	40 000 000 cycle 	 500 000 microS à  80 MHz
 		//  80 000 000 cycle 	 500 000 microS à 160 MHz
-		_latch_seq[i] = showtime * (1 << i);
+		_latch_seq[i] = showticks * (1 << i);
 
 		uint32_t timePerColorDepth = RGBMATRIX_ROW_PATTERN*_latch_seq[i]/5;
 		DEBUGLOG("%#4u (ticks)  %#4u (us per row)  %#6u (cycles per row)  %#5u (us per layer) \r\n", _latch_seq[i], _latch_seq[i]/5, _latch_seq[i] * 16 * (CPU2X ? 2 : 1), timePerColorDepth);
@@ -474,7 +475,7 @@ void ESP8266RGBMatrix::enable() {
 	timer1_isr_init();
 	timer1_attachInterrupt(ESP8266RGBMatrix::refreshCallback);
 	timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP);	 //TIM_DIV16 5MHz (5 ticks/us - 1677721.4 us max)
-	timer1_write(RGBMATRIX_SHOWTIME);  // 5000 ticks = 5*1000 us = 1ms
+	timer1_write(_latch_seq[0]);  // 5000 ticks = 5*1000 us = 1ms
 	interrupts();
 }
 
@@ -515,149 +516,14 @@ void ESP8266RGBMatrix::dumpImgCount(){
 	DEBUGLOG("%u\r\n", _imgCount);
 	_imgCount = 0;
 }
-/*
-// Original avec un décalage de colonne régulier
-void ESP8266RGBMatrix::refresh() {
-	// 80 Mhz : Total ??? Cycle/image et Min=177 Max=275 Cycle/Row
-	//160 Mhz : Total 21510 Cycle/image et Min=217 Max=324 Cycle/Row
-	noInterrupts();
-	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1 << RGBMATRIX_GPIO_OE);
-	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, (1 << RGBMATRIX_GPIO_LAT));
-	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << RGBMATRIX_GPIO_A) + (1 << RGBMATRIX_GPIO_B) + (1 << RGBMATRIX_GPIO_C) + (1 << RGBMATRIX_GPIO_D));
-	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, ROW2PIN(_display_row));
-	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << RGBMATRIX_GPIO_LAT));
-	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << RGBMATRIX_GPIO_OE));
-
-	_display_row++;
-	_display_buffer_pos += SEND_BUFFER_SIZE;
-	if (_display_row == RGBMATRIX_ROW_PATTERN) {
-		_display_row = 0;
-		_display_color++;
-		if (_display_color == RGBMATRIX_COLOR_DEPTH) {
-			_display_color = 0;
-			_display_buffer_pos = _display_buffer;
-		}
-		timer1_write(_latch_seq[_display_color]);
-	}
-	memcpy((void *)&SPI1W0, _display_buffer_pos, SEND_BUFFER_SIZE);
-	SPI1CMD |= SPIBUSY;
-	interrupts();
-}
-*/
-/*
-// Version originale sans mémorisation de l'offset du layer et décalage de ROW indexé
-inline void ESP8266RGBMatrix::refresh() {
-	// Min=214	Max=301	Sum=21107
-	noInterrupts();
-	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1 << RGBMATRIX_GPIO_OE);
-	GPIO_REG_WRITE(seq_REG_CMD[_display_row], seq_REG_VAL[_display_row]);
-	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1 << RGBMATRIX_GPIO_LAT);
-	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, 1 << RGBMATRIX_GPIO_LAT);
-	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, 1 << RGBMATRIX_GPIO_OE);
-
-	_display_row++;
-	if (_display_row == RGBMATRIX_ROW_PATTERN) {
-		_display_row = 0;  //Calculer le pointeur pour éviter multiplication
-		_display_color++;
-		if (_display_color == RGBMATRIX_COLOR_DEPTH) {
-			_display_color = 0;
-		}
-		timer1_write(_latch_seq[_display_color]);
-	}
-
-#ifdef PxMATRIX_DOUBLE_BUFFER
-	uint8_t * temp_bufferp = _active_buffer ? _buffer2 : _buffer;
-#else
-	uint8_t * temp_bufferp = _buffer;
-#endif
-	memcpy((void *)&SPI1W0, &temp_bufferp[_display_color * BUFFER_SIZE + seq_ROW_ID[_display_row] * SEND_BUFFER_SIZE], SEND_BUFFER_SIZE);
-	SPI1CMD |= SPIBUSY;
-	interrupts();
-}
-*/
-/*
-inline void ESP8266RGBMatrix::refresh() {
-	//Min=208	Max=297	Sum=20548
-	//Min=219	Max=312	Sum=21617 (décalant le reset OE)
-
-	noInterrupts();
-	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1 << RGBMATRIX_GPIO_OE);
-	GPIO_REG_WRITE(seq_REG_CMD[_display_row], seq_REG_VAL[_display_row]);
-	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1 << RGBMATRIX_GPIO_LAT);
-//	for(int i =0; i<350; i++)
-//		asm volatile ("nop");
-//	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, 1 << RGBMATRIX_GPIO_LAT);
-	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << RGBMATRIX_GPIO_OE) + (1 << RGBMATRIX_GPIO_LAT));
-
-	_display_row++;
-	if (_display_row == RGBMATRIX_ROW_PATTERN) {
-		_display_row = 0;  //Calculer le pointeur pour éviter multiplication
-		_display_color++;
-		if (_display_color == RGBMATRIX_COLOR_DEPTH) {
-			_display_color = 0;
-			_display_buffer_pos2 = _display_buffer;
-			//_imgCount++;
-		}
-		else
-			_display_buffer_pos2 += BUFFER_SIZE;
-
-		//timer1_write(_latch_seq[_display_color]);
-		T1L = _latch_seq[_display_color];
-	}
-	memcpy((void *)&SPI1W0, _display_buffer_pos2 + seq_ROW_ID[_display_row], SEND_BUFFER_SIZE);
-	SPI1CMD |= SPIBUSY;
-	interrupts();
-}
-*/
-/*
-// Version originale avec un timer régulier et réitération des layers
-inline void ESP8266RGBMatrix::refresh() {
-	//Min=208	Max=297	Sum=20548
-	//Min=219	Max=312	Sum=21617 (décalant le reset OE)
-
-	noInterrupts();
-	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1 << RGBMATRIX_GPIO_OE);
-	for(int i = 0; i<40; i++)
-		asm volatile ("nop");
-	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1 << RGBMATRIX_GPIO_LAT);
-	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, 1 << RGBMATRIX_GPIO_LAT);
-//	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << RGBMATRIX_GPIO_OE) + (1 << RGBMATRIX_GPIO_LAT));
-	GPIO_REG_WRITE(seq_REG_CMD[_display_row], seq_REG_VAL[_display_row]);
-	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, 1 << RGBMATRIX_GPIO_OE);
-
-	static uint8_t pass = 0;
-	static uint8_t passMax = 1;
-	_display_row++;
-	if (_display_row == RGBMATRIX_ROW_PATTERN) {
-		_display_row = 0;
-		pass++;
-		if (pass == passMax){
-			pass = 0;
-			passMax = passMax*2;
-			_display_color++;
-			if (_display_color == RGBMATRIX_COLOR_DEPTH) {
-				_display_color = 0;
-				_display_buffer_pos2 = _display_buffer;
-				pass = 0;
-				passMax = 1;
-				//_imgCount++;
-			}
-			else
-				_display_buffer_pos2 += BUFFER_SIZE;
-		}
-	}
-	memcpy((void *)&SPI1W0, _display_buffer_pos2 + seq_ROW_ID[_display_row], SEND_BUFFER_SIZE);
-	SPI1CMD |= SPIBUSY;
-
-	interrupts();
-}
-*/
 
 inline void ESP8266RGBMatrix::refresh() {
+	//200	213	19603
 	noInterrupts();
-	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, (1 << RGBMATRIX_GPIO_LAT)+(1 << RGBMATRIX_GPIO_OE));
+	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, (1 << RGBMATRIX_GPIO_OE));
 	if (_display_color == 0)
 		GPIO_REG_WRITE(seq_REG_CMD[_display_row], seq_REG_VAL[_display_row]);
+	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, (1 << RGBMATRIX_GPIO_LAT));
 	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << RGBMATRIX_GPIO_LAT)+(1 << RGBMATRIX_GPIO_OE));
 
 	_display_color++;
