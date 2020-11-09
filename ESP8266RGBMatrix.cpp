@@ -8,13 +8,19 @@
 #define DEBUGLOG(...)
 #endif
 
+///// TODO revoir les methodes avec double buffer pour une compatibilité, et passer le double buffer en variable plutot que Define
+///// TODO Vérifier le _begin à chaque utilisation des buffer
+///// TODO Remplacer les getFrameBufferSize par des sizeof
 ESP8266RGBMatrix::ESP8266RGBMatrix() : Adafruit_GFX(RGBMATRIX_WIDTH + ADAFRUIT_GFX_EXTRA, RGBMATRIX_HEIGHT) {
+	//initialisation
 	_isBegin = false;
 	_display_row = 0;
-	_display_color = 0;
-	_imgCount = 0;
+	_display_layer = 0;
 
-	setBrightness(255);
+	_framesPerSec = 1000;
+	initShowTicks(); //Depend of _colorDepth and _framesPerSec
+
+	_brightness = 255;
 	setRotate(false);
 	setFlip(false);
 	setColorOrder(RRGGBB);
@@ -22,19 +28,6 @@ ESP8266RGBMatrix::ESP8266RGBMatrix() : Adafruit_GFX(RGBMATRIX_WIDTH + ADAFRUIT_G
 	setBlockPattern(ABCD);
 	setPanelsWidth(1);
 	setColorOffset(0,0,0);
-
-	//Gestion des buffers
-	_buffer = new uint8_t[BUFFER_TOTAL];
-	_display_buffer = _buffer;
-	_display_buffer_pos = _display_buffer;
-	_display_buffer_pos2 = _display_buffer;
-#ifdef RGBMATRIX_DOUBLE_BUFFER
-	_buffer2 = new uint8_t[BUFFER_TOTAL];
-	//_edit_buffer = _buffer2;
-	_active_buffer = false;
-#else
-	//_edit_buffer = _buffer;
-#endif
 
 	for (uint8_t yy = 0; yy < RGBMATRIX_HEIGHT; yy++)
 		_row_offset[yy] = ((yy) % RGBMATRIX_ROW_PATTERN) * SEND_BUFFER_SIZE + SEND_BUFFER_SIZE - 1;
@@ -60,6 +53,21 @@ void ESP8266RGBMatrix::begin() {
 	digitalWrite(RGBMATRIX_GPIO_C, LOW);
 	digitalWrite(RGBMATRIX_GPIO_D, LOW);
 
+	//Gestion des buffers
+	_buffer = new uint8_t[BUFFER_TOTAL];
+	_display_buffer = _buffer;
+	_display_buffer_pos = _display_buffer;
+#ifdef RGBMATRIX_DOUBLE_BUFFER
+	_buffer2 = new uint8_t[BUFFER_TOTAL];
+	//_edit_buffer = _buffer2;
+	_active_buffer = false;
+#else
+	//_edit_buffer = _buffer;
+#endif
+
+	initShowTicks();
+
+#ifdef DEBUG_RGBMatrix
 	DEBUGLOG("CPU : %d MHz (CPU2X=%x)\r\n", CPU2X & 1 ? 160 : 80, CPU2X);
 	DEBUGLOG("Height              %d px\r\n", RGBMATRIX_HEIGHT);
 	DEBUGLOG("Width               %d px\r\n", RGBMATRIX_WIDTH);
@@ -69,10 +77,16 @@ void ESP8266RGBMatrix::begin() {
 	DEBUGLOG("Buffer size         %d bytes\r\n", BUFFER_SIZE);
 	DEBUGLOG("Pattern color bytes %d bytes\r\n", PATTERN_COLOR_BYTES);
 	DEBUGLOG("Send buffer size    %d bytes\r\n", SEND_BUFFER_SIZE);
-	DEBUGLOG("Max show time       %d us\r\n", RGBMATRIX_MAX_SHOWTICKS);
-	
-
-	initLatchSeq();
+	DEBUGLOG("Max show time       %u timer_ticks\r\n", RGBMATRIX_MIN_SHOWTICKS);
+	DEBUGLOG("Sequence :\r\n");
+	uint32_t timePerImage = 0;
+	for (uint8_t i = 0; i < _colorDepth; i++){
+		uint16_t temp_showTicks = _showTicks*(1<<i);
+		DEBUGLOG("%#4u (timer_ticks)  %#4u (us per row)  %#6u (cycles per row)  %#5u (us per layer) \r\n", temp_showTicks, temp_showTicks/5, temp_showTicks * 16 * (CPU2X ? 2 : 1), RGBMATRIX_ROW_PATTERN*temp_showTicks/5);
+		timePerImage += RGBMATRIX_ROW_PATTERN*temp_showTicks/5;
+	}
+	DEBUGLOG("Temps total par image : %7.3f ms\r\n", ((float)timePerImage)/1000);
+#endif
 
 	_isBegin = true;
 }
@@ -88,28 +102,12 @@ void ESP8266RGBMatrix::init_SPI() {
 }
 
 //TODO rename latch to layer
-void ESP8266RGBMatrix::initLatchSeq() {
+void ESP8266RGBMatrix::initShowTicks() {
 	// 10000[ms]/ 25[img/s] / 1000[pour se mettre à la mS]
 	uint32_t showticks = 5*1000*(1000/75)/RGBMATRIX_ROW_PATTERN/((1<<RGBMATRIX_COLOR_DEPTH)-1);
-	if (showticks < RGBMATRIX_MAX_SHOWTICKS)
-		showticks = RGBMATRIX_MAX_SHOWTICKS;
-	DEBUGLOG("Sequence :\r\n");
-
-	uint32_t timePerImage = 0;
-	for (uint8_t i = 0; i < RGBMATRIX_COLOR_DEPTH; i++) {
-		// Lacth = cycle de pause
-		// Latch = 5*durée(en microseconde) = durée(en nanoseconde)/200
-		// 200 nanoseconde = durée d'un cycle de timer pour TIM_DIV16
-		//_latch_seq[i] = 5 * ((RGBMATRIX_SHOWTIME * (1 << i) * _brightness) / 255 / 2);
-		//	40 000 000 cycle 	 500 000 microS à  80 MHz
-		//  80 000 000 cycle 	 500 000 microS à 160 MHz
-		_latch_seq[i] = showticks * (1 << i);
-
-		uint32_t timePerColorDepth = RGBMATRIX_ROW_PATTERN*_latch_seq[i]/5;
-		DEBUGLOG("%#4u (ticks)  %#4u (us per row)  %#6u (cycles per row)  %#5u (us per layer) \r\n", _latch_seq[i], _latch_seq[i]/5, _latch_seq[i] * 16 * (CPU2X ? 2 : 1), timePerColorDepth);
-		timePerImage += timePerColorDepth;
-	}
-	DEBUGLOG("Temps total par image : %7.3f ms\r\n", ((float)timePerImage)/1000);
+	if (showticks < RGBMATRIX_MIN_SHOWTICKS)
+		showticks = RGBMATRIX_MIN_SHOWTICKS;
+	_showTicks = showticks;
 }
 
 // Pass 8-bit (each) R,G,B, get back 16-bit packed color
@@ -144,7 +142,7 @@ void ESP8266RGBMatrix::setFlip(bool flip) {
 
 void ESP8266RGBMatrix::setBrightness(uint8_t brightness) {
 	_brightness = brightness;
-	initLatchSeq();
+	//initShowTicks();
 }
 
 void ESP8266RGBMatrix::drawPixel(int16_t x, int16_t y, uint16_t color) {
@@ -156,22 +154,21 @@ void ESP8266RGBMatrix::showBuffer() {
 	_active_buffer = !_active_buffer;
 	_display_buffer = _active_buffer ? _buffer2 : _buffer;
 //	_edit_buffer = _active_buffer ? _buffer : _buffer2;
-	_display_buffer_pos = _display_buffer + _display_color * BUFFER_SIZE + _display_row * SEND_BUFFER_SIZE;
-	_display_buffer_pos2 = _display_buffer + _display_color * BUFFER_SIZE;
+	_display_buffer_pos = _display_buffer + _display_layer * BUFFER_SIZE + seq_ROW_ID[_display_row];
 #endif
 }
 
-#ifdef RGBMATRIX_DOUBLE_BUFFER
 void ESP8266RGBMatrix::copyBuffer(bool reverse = false) {
 	// This copies the display buffer to the drawing buffer (or reverse)
 	// You may need this in case you rely on the framebuffer to always contain the last frame
 	// _active_buffer = true means that PxMATRIX_buffer2 is displayed
+#ifdef RGBMATRIX_DOUBLE_BUFFER
 	if (_active_buffer ^ reverse)
 		memcpy(_buffer, _buffer2, BUFFER_TOTAL);
 	else
 		memcpy(_buffer2, _buffer, BUFFER_TOTAL);
-}
 #endif
+}
 
 void ESP8266RGBMatrix::setColorOffset(uint8_t r, uint8_t g, uint8_t b) {
 	_color_R_offset = r;
@@ -463,20 +460,19 @@ uint8_t ESP8266RGBMatrix::getPixel(int8_t x, int8_t y) {
 	return (0);  //PxMATRIX_buffer[x+ (y/8)*LCDWIDTH] >> (y%8)) & 0x1;
 }
 
-void ESP8266RGBMatrix::enable() {
+bool ESP8266RGBMatrix::enable() {
 	if (!_isBegin){
 		DEBUGLOG("Must call begin() before enable()");
-		return;
+		return false;
 	}
-	noInterrupts();
 	// Premier appel pour initiliser les pointeurs
 	// Timer1 automaticly adjuste ticks
 	refresh();
 	timer1_isr_init();
 	timer1_attachInterrupt(ESP8266RGBMatrix::refreshCallback);
 	timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP);	 //TIM_DIV16 5MHz (5 ticks/us - 1677721.4 us max)
-	timer1_write(_latch_seq[0]);  // 5000 ticks = 5*1000 us = 1ms
-	interrupts();
+	timer1_write(50);  // 50 ticks = 5*10 us = 50us
+	return true;
 }
 
 void ESP8266RGBMatrix::disable() {
@@ -493,7 +489,6 @@ void ESP8266RGBMatrix::refreshTest(){
 		DEBUGLOG("Must call begin() before enable()");
 		return;
 	}
-	refresh(); // 1e appel ignoré pour initialiser les pointeurs 
 	uint32_t sumV = 0;
 	uint16_t minV = 0xFFFF;
 	uint16_t maxV = 0;
@@ -512,83 +507,35 @@ void ESP8266RGBMatrix::refreshTest(){
 	DEBUGLOG("\r\nMin=%d\tMax=%d\tSum=%d\r\n",minV,maxV,sumV);
 }
 
-void ESP8266RGBMatrix::dumpImgCount(){
-	DEBUGLOG("%u\r\n", _imgCount);
-	_imgCount = 0;
-}
-
 inline void ESP8266RGBMatrix::refresh() {
-	//200	213	19603
+	//Min=214	Max=226	Sum=20928 (avant passage _color_depth en variable)
+	//Min=215	Max=227	Sum=20992 (avant calcul de durée plutot que tableau
+	//Min=215	Max=227	Sum=20995
 	noInterrupts();
 	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, (1 << RGBMATRIX_GPIO_OE));
-	if (_display_color == 0)
+	if (_display_layer == 0)
 		GPIO_REG_WRITE(seq_REG_CMD[_display_row], seq_REG_VAL[_display_row]);
 	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, (1 << RGBMATRIX_GPIO_LAT));
 	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << RGBMATRIX_GPIO_LAT)+(1 << RGBMATRIX_GPIO_OE));
 
-	_display_color++;
-	if (_display_color == RGBMATRIX_COLOR_DEPTH) {
-		_display_color = 0;
+	_display_layer++;
+	if (_display_layer == RGBMATRIX_COLOR_DEPTH) {
+		_display_layer = 0;
 		_display_row = (_display_row + 1) & (RGBMATRIX_ROW_PATTERN-1);
-		_display_buffer_pos2 = _display_buffer + seq_ROW_ID[_display_row];
+		_display_buffer_pos = _display_buffer + seq_ROW_ID[_display_row];
 	}
 	else
-		_display_buffer_pos2 += BUFFER_SIZE;
+		_display_buffer_pos += BUFFER_SIZE;
 
-	memcpy((void *)&SPI1W0, _display_buffer_pos2 , SEND_BUFFER_SIZE);
+	memcpy((void *)&SPI1W0, _display_buffer_pos , SEND_BUFFER_SIZE);
 	SPI1CMD |= SPIBUSY;
 
-	//timer1_write(_latch_seq[_display_color]);
-	T1L = _latch_seq[_display_color];
+	T1L = _showTicks*(1<<_display_layer);
 	interrupts();
 }
 
 ///// TODO revoir les methodes avec double buffer pour une compatibilité, et passer le double buffer en variable plutot que Define
 ///// TODO passer RGBMATRIX_SHOWTIME en normal, plus en DEFINE
-void ESP8266RGBMatrix::enableCallibration() {
-	if (!_isBegin){
-		DEBUGLOG("Must call begin() before enable()");
-		return;
-	}
-	_display_buffer[20] = 0xFF;
-	_display_buffer[21] = 0xFF;
-	_display_buffer[22] = 0xFF;
-	_display_buffer[23] = 0xFF;
-	noInterrupts();
-	// Premier appel pour initiliser les pointeurs
-	refreshCalibration();
-	timer1_isr_init();
-	timer1_attachInterrupt(ESP8266RGBMatrix::refreshCalibrationCallback);
-	timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP);
-	timer1_write(5000);  // 1ms
-	interrupts();
-}
-
-
-void ESP8266RGBMatrix::setMSCalibration(uint32_t speed){
-	timer1_write(speed);  // 1ms
-}
-
-void ESP8266RGBMatrix::refreshCalibrationCallback() {
-	display.refreshCalibration();
-}
-
-inline void ESP8266RGBMatrix::refreshCalibration() {
-	noInterrupts();
-	while(SPI1CMD & SPIBUSY){
-		DEBUGLOG("!");
-		timer1_write(5000);
-	}
-	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1 << RGBMATRIX_GPIO_OE);
-	GPIO_REG_WRITE(seq_REG_CMD[0], seq_REG_VAL[0]);
-	GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1 << RGBMATRIX_GPIO_LAT);
-	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, 1 << RGBMATRIX_GPIO_LAT);
-	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, 1 << RGBMATRIX_GPIO_OE);
-	memcpy((void *)&SPI1W0, _display_buffer, SEND_BUFFER_SIZE);
-	SPI1CMD |= SPIBUSY;
-	interrupts();
-}
-
 
 // clear everything
 void ESP8266RGBMatrix::clearDisplay() {

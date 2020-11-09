@@ -39,7 +39,11 @@
 #define RGBMATRIX_COLOR_DEPTH 6
 #endif
 
-//#define RGBMATRIX_DOUBLE_BUFFER true
+#define RGBMATRIX_DOUBLE_BUFFER true
+
+// Default values
+#define RGBMATRIX_DEFAULT_COLOR_DEPTH 6
+
 
 // Defines the speed of the SPI bus (reducing this may help if you experience noisy images)
 #ifndef RGBMATRIX_SPI_FREQUENCY
@@ -55,7 +59,7 @@
 #define ROW_SETS_PER_BUFFER	(ROWS_PER_BUFFER / RGBMATRIX_ROW_PATTERN)
 // 5[coefTimer1] * 1 000 000 [en ms] * SEND_BUFFER_SIZE*8 [Bits send] / RGBMATRIX_SPI_FREQUENCY [SPI Debit] 
 //entre 50 et 25K ticks 
-#define RGBMATRIX_MAX_SHOWTICKS (5*1000000*SEND_BUFFER_SIZE*8/RGBMATRIX_SPI_FREQUENCY)
+#define RGBMATRIX_MIN_SHOWTICKS (5*1000000*SEND_BUFFER_SIZE*8/RGBMATRIX_SPI_FREQUENCY)
 
 #ifndef _BV
 #define _BV(x) (1 << (x))
@@ -105,22 +109,13 @@ enum color_orders { RRGGBB,
 
 class ESP8266RGBMatrix : public Adafruit_GFX {
 public:
-	uint8_t getRow() {return _display_row;};
-	uint8_t getColor() {return _display_color;};
-	uint16_t getLayerTime() {return _latch_seq[_display_color];};
-
 	ESP8266RGBMatrix();
 	void begin();
 	void disable();
-	void enable();
-	void enableCallibration();
-	void setMSCalibration(uint32_t speed);
+	bool enable();
 	static inline void refreshCallback();
-	static inline void refreshCalibrationCallback();
 	inline void refresh();
-	inline void refreshCalibration();
 	void refreshTest();
-	void dumpImgCount();
 	void clearDisplay();
 	void clearDisplay(bool selected_buffer);
 	//inline uint8_t* getEditBuffer() { return _edit_buffer; };
@@ -130,9 +125,7 @@ public:
 	uint8_t getPixel(int8_t x, int8_t y);                // Does nothing for now (always returns 0)
 	uint16_t color565(uint8_t r, uint8_t g, uint8_t b);  // Converts RGB888 to RGB565
 	void showBuffer();
-#ifdef RGBMATRIX_DOUBLE_BUFFER
 	void copyBuffer(bool reverse);
-#endif
 
 	void setBrightness(uint8_t brightness);			// Set the brightness of the panels (default is 255)
 	void setRotate(bool rotate);  					// Rotate display
@@ -144,7 +137,10 @@ public:
 	void setPanelsWidth(uint8_t panels);			// Set the number of panels that make up the display area width (default is 1)
 
 private:
-	uint32_t _imgCount;
+	bool _doubleBuffer;
+	uint8_t _framesPerSec;
+	uint16_t _showTicks;
+	uint8_t _colorDepth;
 	uint8_t _brightness;
 	bool _rotate;
 	bool _flip;
@@ -159,17 +155,15 @@ private:
 	uint8_t _panel_width_bytes;
 	bool _isBegin;
 	uint8_t _display_row;
-	uint8_t _display_color;
+	uint8_t _display_layer;
 
 	// Holds some pre-computed values for faster pixel drawing
-	uint16_t _latch_seq[RGBMATRIX_COLOR_DEPTH];
 	uint32_t _row_offset[RGBMATRIX_HEIGHT];
 
 	//Gestion des buffers
 	uint8_t* _buffer;
 	uint8_t* _display_buffer;
 	uint8_t* _display_buffer_pos;
-	uint8_t* _display_buffer_pos2;
 #ifdef RGBMATRIX_DOUBLE_BUFFER
 	uint8_t* _buffer2;
 	//uint8_t* _edit_buffer;
@@ -179,7 +173,7 @@ private:
 #endif
 
 	void init_SPI();
-	void initLatchSeq();
+	void initShowTicks();
 	// Generic function that draw one pixel
 	void fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t g, uint8_t b, bool selected_buffer);
 
