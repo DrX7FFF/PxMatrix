@@ -2,26 +2,13 @@
 #define ESP8266RGBMatrix_H
 
 #define DEBUG_RGBMatrix  //Uncomment this to enable debug messages over serial port
-
-// Pins affectation
-#ifndef RGBMATRIX_GPIO_A
-#define RGBMATRIX_GPIO_A 0
-#endif
-#ifndef RGBMATRIX_GPIO_B
-#define RGBMATRIX_GPIO_B 4
-#endif
-#ifndef RGBMATRIX_GPIO_C
-#define RGBMATRIX_GPIO_C 5
-#endif
-#ifndef RGBMATRIX_GPIO_D
-#define RGBMATRIX_GPIO_D 2
-#endif
-#ifndef RGBMATRIX_GPIO_OE
-#define RGBMATRIX_GPIO_OE 15
-#endif
-#ifndef RGBMATRIX_GPIO_LAT
-#define RGBMATRIX_GPIO_LAT 12
-#endif
+// #define GPIO_OE 15
+// #define GPIO_LAT 12
+// #define GPIO_A 0
+// #define GPIO_B 4
+// #define GPIO_C 5
+// #define GPIO_D 2
+// #define GPIO_E ?
 
 // Matrix pixels width
 #ifndef RGBMATRIX_WIDTH
@@ -34,9 +21,6 @@
 
 #ifndef RGBMATRIX_ROW_PATTERN
 #define RGBMATRIX_ROW_PATTERN 16
-#endif
-#ifndef RGBMATRIX_COLOR_DEPTH
-#define RGBMATRIX_COLOR_DEPTH 6
 #endif
 
 #define RGBMATRIX_DOUBLE_BUFFER true
@@ -51,19 +35,14 @@
 #endif
 
 // Helper
-#define BUFFER_TOTAL (RGBMATRIX_COLOR_DEPTH * BUFFER_SIZE)
-#define BUFFER_SIZE (RGBMATRIX_HEIGHT * RGBMATRIX_WIDTH * 3 / 8)
 #define PATTERN_COLOR_BYTES ((RGBMATRIX_HEIGHT / RGBMATRIX_ROW_PATTERN) * (RGBMATRIX_WIDTH / 8))
 #define SEND_BUFFER_SIZE (PATTERN_COLOR_BYTES * 3)
-#define ROWS_PER_BUFFER (RGBMATRIX_HEIGHT / 2)
-#define ROW_SETS_PER_BUFFER	(ROWS_PER_BUFFER / RGBMATRIX_ROW_PATTERN)
-// 5[coefTimer1] * 1 000 000 [en ms] * SEND_BUFFER_SIZE*8 [Bits send] / RGBMATRIX_SPI_FREQUENCY [SPI Debit] 
-//entre 50 et 25K ticks 
-#define RGBMATRIX_MIN_SHOWTICKS (5*1000000*SEND_BUFFER_SIZE*8/RGBMATRIX_SPI_FREQUENCY)
 
 #ifndef _BV
 #define _BV(x) (1 << (x))
 #endif
+#define D2B(v)		((((v&0b1)==0b1)?1:0)+(((v&0b10)==0b10)?10:0)+(((v&0b100)==0b100)?100:0)+(((v&0b1000)==0b1000)?1000:0)+(((v&0b10000)==0b10000)?10000:0)+(((v&0b100000)==0b100000)?100000:0)+(((v&0b1000000)==0b1000000)?1000000:0)+(((v&0b10000000)==0b10000000)?10000000:0))
+
 
 #include <SPI.h>
 #include "Adafruit_GFX.h"
@@ -110,7 +89,11 @@ enum color_orders { RRGGBB,
 class ESP8266RGBMatrix : public Adafruit_GFX {
 public:
 	ESP8266RGBMatrix();
-	void begin();
+	void setGPIO(uint8_t gpio_OE, uint8_t gpio_LAT, uint8_t gpio_A, uint8_t gpio_B, uint8_t gpio_C);
+	void setGPIO(uint8_t gpio_OE, uint8_t gpio_LAT, uint8_t gpio_A, uint8_t gpio_B, uint8_t gpio_C, uint8_t gpio_D);
+	void setGPIO(uint8_t gpio_OE, uint8_t gpio_LAT, uint8_t gpio_A, uint8_t gpio_B, uint8_t gpio_C, uint8_t gpio_D, uint8_t gpio_E);
+	void begin(uint8_t colorDepth);
+	void setFramesPerSec(uint8_t frames);
 	void disable();
 	bool enable();
 	static inline void refreshCallback();
@@ -137,10 +120,23 @@ public:
 	void setPanelsWidth(uint8_t panels);			// Set the number of panels that make up the display area width (default is 1)
 
 private:
+	uint16_t _mask_OE;
+	uint16_t _mask_LAT;
+	uint16_t _mask_A;
+	uint16_t _mask_B;
+	uint16_t _mask_C;
+	uint16_t _mask_D;
+	uint16_t _mask_E;
+
 	bool _doubleBuffer;
 	uint8_t _framesPerSec;
 	uint16_t _showTicks;
 	uint8_t _colorDepth;
+	uint8_t _muxBits;
+	uint8_t _rowPattern;
+	uint32_t _bufferSize;
+	uint32_t _patternColorBytes;
+	uint32_t _sendBufferSize;
 	uint8_t _brightness;
 	bool _rotate;
 	bool _flip;
@@ -158,7 +154,7 @@ private:
 	uint8_t _display_layer;
 
 	// Holds some pre-computed values for faster pixel drawing
-	uint32_t _row_offset[RGBMATRIX_HEIGHT];
+	uint32_t* _row_offset;
 
 	//Gestion des buffers
 	uint8_t* _buffer;
@@ -172,66 +168,20 @@ private:
 	//uint8_t* _edit_buffer = _buffer;
 #endif
 
-	void init_SPI();
+	void init_SPIBufferSize();
 	void initShowTicks();
+	void initPatternSeq();
+	void initPreIndex();
+	void initGPIO(uint8_t muxBits, uint8_t gpio_OE, uint8_t gpio_LAT, uint8_t gpio_A, uint8_t gpio_B, uint8_t gpio_C, uint8_t gpio_D, uint8_t gpio_E);
 	// Generic function that draw one pixel
 	void fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t g, uint8_t b, bool selected_buffer);
 
-
-	//TODO utiliser une structure et faire une formule
-	const uint8_t seq_REG_CMD[16] = {
-		GPIO_OUT_W1TS_ADDRESS,
-		GPIO_OUT_W1TS_ADDRESS,
-		GPIO_OUT_W1TC_ADDRESS,
-		GPIO_OUT_W1TS_ADDRESS,
-		GPIO_OUT_W1TS_ADDRESS,
-		GPIO_OUT_W1TC_ADDRESS,
-		GPIO_OUT_W1TC_ADDRESS,
-		GPIO_OUT_W1TS_ADDRESS,
-		GPIO_OUT_W1TS_ADDRESS,
-		GPIO_OUT_W1TC_ADDRESS,
-		GPIO_OUT_W1TS_ADDRESS,
-		GPIO_OUT_W1TS_ADDRESS,
-		GPIO_OUT_W1TC_ADDRESS,
-		GPIO_OUT_W1TC_ADDRESS,
-		GPIO_OUT_W1TC_ADDRESS,
-		GPIO_OUT_W1TC_ADDRESS};
-	const uint8_t seq_REG_VAL[16] = {
-		1 << RGBMATRIX_GPIO_A,
-		1 << RGBMATRIX_GPIO_B,
-		1 << RGBMATRIX_GPIO_A,
-		1 << RGBMATRIX_GPIO_C,
-		1 << RGBMATRIX_GPIO_A,
-		1 << RGBMATRIX_GPIO_B,
-		1 << RGBMATRIX_GPIO_A,
-		1 << RGBMATRIX_GPIO_D,
-		1 << RGBMATRIX_GPIO_A,
-		1 << RGBMATRIX_GPIO_C,
-		1 << RGBMATRIX_GPIO_B,
-		1 << RGBMATRIX_GPIO_C,
-		1 << RGBMATRIX_GPIO_A,
-		1 << RGBMATRIX_GPIO_C,
-		1 << RGBMATRIX_GPIO_B,
-		1 << RGBMATRIX_GPIO_D};
-	const uint16_t seq_ROW_ID[16] = {
-		1*SEND_BUFFER_SIZE,
-		3*SEND_BUFFER_SIZE,
-		2*SEND_BUFFER_SIZE,
-		6*SEND_BUFFER_SIZE,
-		7*SEND_BUFFER_SIZE,
-		5*SEND_BUFFER_SIZE,
-		4*SEND_BUFFER_SIZE,
-		12*SEND_BUFFER_SIZE,
-		13*SEND_BUFFER_SIZE,
-		9*SEND_BUFFER_SIZE,
-		11*SEND_BUFFER_SIZE,
-		15*SEND_BUFFER_SIZE,
-		14*SEND_BUFFER_SIZE,
-		10*SEND_BUFFER_SIZE,
-		8*SEND_BUFFER_SIZE,
-		0*SEND_BUFFER_SIZE};
-
-
+	struct muxStruct {
+		uint8_t cmd;
+		uint16_t val;
+		uint16_t offset;
+	} ;
+	muxStruct* _muxSeq;
 };
 
 extern ESP8266RGBMatrix display;
