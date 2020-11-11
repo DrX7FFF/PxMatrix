@@ -8,32 +8,25 @@
 #define DEBUGLOG(...)
 #endif
 
-///// TODO revoir les methodes avec double buffer pour une compatibilité, et passer le double buffer en variable plutot que Define
 ///// TODO Vérifier le _begin à chaque utilisation des buffer
-ESP8266RGBMatrix::ESP8266RGBMatrix() : Adafruit_GFX(RGBMATRIX_WIDTH + ADAFRUIT_GFX_EXTRA, RGBMATRIX_HEIGHT) {
+ESP8266RGBMatrix::ESP8266RGBMatrix() {
 	//initialisation
 	_isBegin = false;
 	_display_row = 0;
 	_display_layer = 0;
 
-	_bufferSize = (RGBMATRIX_HEIGHT * RGBMATRIX_WIDTH * 3 / 8);
-	_patternColorBytes = (RGBMATRIX_HEIGHT / RGBMATRIX_ROW_PATTERN) * (RGBMATRIX_WIDTH / 8);
-	_sendBufferSize = _patternColorBytes * 3;
-
 	//default values
 	_colorDepth = RGBMATRIX_DEFAULT_COLOR_DEPTH;
 	_framesPerSec = 1000;
-//	initShowTicks(); //Depend of _colorDepth and _framesPerSec and _rowPattern pas encore déterminé
 
 	_brightness = 255;
-	setRotate(false);
-	setFlip(false);
-	setColorOrder(RRGGBB);
-	setScanPattern(LINE);
-	setBlockPattern(ABCD);
-	setPanelsWidth(1);
+	_rotate = false;
+	_flip = false;
+	_color_order = RRGGBB;
+	_scan_pattern = LINE;
+	_block_pattern = ABCD;
+	_panels_width = 1;
 	setColorOffset(0,0,0);
-
 }
 
 void ESP8266RGBMatrix::setGPIO(uint8_t gpio_OE, uint8_t gpio_LAT, uint8_t gpio_A, uint8_t gpio_B, uint8_t gpio_C) {
@@ -84,26 +77,36 @@ void ESP8266RGBMatrix::initGPIO(uint8_t muxBits, uint8_t gpio_OE, uint8_t gpio_L
 	}
 }
 
-void ESP8266RGBMatrix::begin(uint8_t colorDepth) {
+void ESP8266RGBMatrix::begin(uint16_t width, uint16_t height, uint8_t colorDepth) {
+	begin(width, height, colorDepth, false);
+}
+
+void ESP8266RGBMatrix::begin(uint16_t width, uint16_t height, uint8_t colorDepth, bool doubleBuffer) {
+	_width = width;
+	_height = height;
+	_doubleBuffer = doubleBuffer;
+	if (colorDepth<1)			_colorDepth = 1;
+	else if (colorDepth>8)		_colorDepth = 8;
+	else						_colorDepth = colorDepth;
+
+	_bufferSize = (_height * _width * 3 / 8);
+	_patternColorBytes = (_height / _rowPattern) * (_width / 8);
+	_sendBufferSize = _patternColorBytes * 3;
+
 	if (_rowPattern == 4)
 		_scan_pattern = ZIGZAG;
-	if (colorDepth<1)
-		_colorDepth = 1;
-	else if (colorDepth>8)
-		_colorDepth = 8;
-	else _colorDepth = colorDepth;
 
 	//Gestion des buffers
 	_buffer = new uint8_t[_colorDepth * _bufferSize];
 	_display_buffer = _buffer;
 	_display_buffer_pos = _display_buffer;
-#ifdef RGBMATRIX_DOUBLE_BUFFER
-	_buffer2 = new uint8_t[_colorDepth * _bufferSize];
-	//_edit_buffer = _buffer2;
 	_active_buffer = false;
-#else
-	//_edit_buffer = _buffer;
-#endif
+	if (_doubleBuffer){
+		_buffer2 = new uint8_t[_colorDepth * _bufferSize];
+		_edit_buffer = _buffer2;
+	}
+	else
+		_edit_buffer = _buffer;
 
 	initShowTicks();
 	initPatternSeq();
@@ -112,8 +115,8 @@ void ESP8266RGBMatrix::begin(uint8_t colorDepth) {
 	
 #ifdef DEBUG_RGBMatrix
 	DEBUGLOG("CPU : %d MHz (CPU2X=%x)\r\n", CPU2X & 1 ? 160 : 80, CPU2X);
-	DEBUGLOG("Height              %#4u px\r\n", RGBMATRIX_HEIGHT);
-	DEBUGLOG("Width               %#4u px\r\n", RGBMATRIX_WIDTH);
+	DEBUGLOG("Width               %#4u px\r\n", _width);
+	DEBUGLOG("Height              %#4u px\r\n", _height);
 	DEBUGLOG("Frame Buffer        %#4u bytes\r\n", _colorDepth * _bufferSize);
 	DEBUGLOG("Mux length          %#4u bits\r\n", _muxBits);
 	DEBUGLOG("Row pattern         %#4u\r\n", _rowPattern);
@@ -137,9 +140,7 @@ void ESP8266RGBMatrix::begin(uint8_t colorDepth) {
 		timePerImage += _rowPattern*temp_showTicks/5;
 	}
 	DEBUGLOG("Total time per image : %7.3f ms\r\n", ((float)timePerImage)/1000);
-
 #endif
-
 	_isBegin = true;
 }
 
@@ -197,39 +198,9 @@ void ESP8266RGBMatrix::initPatternSeq(){
 void ESP8266RGBMatrix::initPreIndex(){
 	if (_row_offset)
 		delete _row_offset;
-	_row_offset = new uint32_t[RGBMATRIX_HEIGHT];
- 	for (uint8_t yy = 0; yy < RGBMATRIX_HEIGHT; yy++)
+	_row_offset = new uint32_t[_height];
+ 	for (uint8_t yy = 0; yy < _height; yy++)
 		_row_offset[yy] = ((yy) % _rowPattern) * _sendBufferSize + _sendBufferSize - 1;
-}
-
-// Pass 8-bit (each) R,G,B, get back 16-bit packed color
-uint16_t ESP8266RGBMatrix::color565(uint8_t r, uint8_t g, uint8_t b) {
-	return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
-}
-
-void ESP8266RGBMatrix::setColorOrder(color_orders color_order) {
-	_color_order = color_order;
-}
-
-void ESP8266RGBMatrix::setScanPattern(scan_patterns scan_pattern) {
-	_scan_pattern = scan_pattern;
-}
-
-void ESP8266RGBMatrix::setBlockPattern(block_patterns block_pattern) {
-	_block_pattern = block_pattern;
-}
-
-void ESP8266RGBMatrix::setPanelsWidth(uint8_t panels) {
-	_panels_width = panels;
-	_panel_width_bytes = (RGBMATRIX_WIDTH / _panels_width) / 8;
-}
-
-void ESP8266RGBMatrix::setRotate(bool rotate) {
-	_rotate = rotate;
-}
-
-void ESP8266RGBMatrix::setFlip(bool flip) {
-	_flip = flip;
 }
 
 void ESP8266RGBMatrix::setBrightness(uint8_t brightness) {
@@ -237,36 +208,36 @@ void ESP8266RGBMatrix::setBrightness(uint8_t brightness) {
 	//initShowTicks();
 }
 
-void ESP8266RGBMatrix::setFramesPerSec(uint8_t frames) {
-	if (frames>1)
-		_framesPerSec = frames;
-	else
-		_framesPerSec = 1;
-}
-
-void ESP8266RGBMatrix::drawPixel(int16_t x, int16_t y, uint16_t color) {
-	drawPixelRGB565(x, y, color);
-}
-
 void ESP8266RGBMatrix::showBuffer() {
-#ifdef RGBMATRIX_DOUBLE_BUFFER
-	_active_buffer = !_active_buffer;
-	_display_buffer = _active_buffer ? _buffer2 : _buffer;
-//	_edit_buffer = _active_buffer ? _buffer : _buffer2;
-	_display_buffer_pos = _display_buffer + _display_layer * _bufferSize + _muxSeq[_display_row].offset;
-#endif
+	if (_doubleBuffer){
+		_active_buffer = !_active_buffer;
+		_display_buffer = _active_buffer ? _buffer2 : _buffer;
+		_display_buffer_pos = _display_buffer + _display_layer * _bufferSize + _muxSeq[_display_row].offset;
+		_edit_buffer = _active_buffer ? _buffer : _buffer2;
+	}
+}
+
+void ESP8266RGBMatrix::clearDisplay() {
+	clearDisplay(!_active_buffer);
+}
+
+void ESP8266RGBMatrix::clearDisplay(bool selected_buffer) {
+	if (_doubleBuffer)
+		memset(selected_buffer ? _buffer2 : _buffer, 0, sizeof(_buffer));
+	else
+		memset(_buffer, 0, sizeof(_buffer));
 }
 
 void ESP8266RGBMatrix::copyBuffer(bool reverse = false) {
 	// This copies the display buffer to the drawing buffer (or reverse)
 	// You may need this in case you rely on the framebuffer to always contain the last frame
 	// _active_buffer = true means that PxMATRIX_buffer2 is displayed
-#ifdef RGBMATRIX_DOUBLE_BUFFER
-	if (_active_buffer ^ reverse)
-		memcpy(_buffer, _buffer2, sizeof(_buffer));
-	else
-		memcpy(_buffer2, _buffer, sizeof(_buffer2));
-#endif
+	if (_doubleBuffer){
+		if (_active_buffer ^ reverse)
+			memcpy(_buffer, _buffer2, sizeof(_buffer));
+		else
+			memcpy(_buffer2, _buffer, sizeof(_buffer2));
+	}
 }
 
 void ESP8266RGBMatrix::setColorOffset(uint8_t r, uint8_t g, uint8_t b) {
@@ -275,8 +246,8 @@ void ESP8266RGBMatrix::setColorOffset(uint8_t r, uint8_t g, uint8_t b) {
 	_color_B_offset = b;
 }
 
-void ESP8266RGBMatrix::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t g, uint8_t b, bool selected_buffer) {
-	uint8_t rows_per_buffer = (RGBMATRIX_HEIGHT / 2);
+void ESP8266RGBMatrix::setPixel(int16_t x, int16_t y, uint8_t r, uint8_t g, uint8_t b) {
+	uint8_t rows_per_buffer = (_height / 2);
 
 	if (r > _color_R_offset)
 		r -= _color_R_offset;
@@ -299,25 +270,25 @@ void ESP8266RGBMatrix::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t
 		// |CD|
 		// Have to rewrite this block suff and move to the scan pattern section - this will only work for chaining up to 2 panels
 		if (_panels_width > 1) {  // Only works for two panels
-			if ((x >= RGBMATRIX_WIDTH / 4) && (x < RGBMATRIX_WIDTH / 2))
-				x += RGBMATRIX_WIDTH / 4;
-			else if ((x >= RGBMATRIX_WIDTH / 2) && (x < RGBMATRIX_WIDTH * 3 / 4))
-				x -= RGBMATRIX_WIDTH / 4;
+			if ((x >= _width / 4) && (x < _width / 2))
+				x += _width / 4;
+			else if ((x >= _width / 2) && (x < _width * 3 / 4))
+				x -= _width / 4;
 		}
 
-		uint16_t y_block = y * 4 / RGBMATRIX_HEIGHT;
-		uint16_t x_block = x * 2 * _panels_width / RGBMATRIX_WIDTH;
+		uint16_t y_block = y * 4 / _height;
+		uint16_t x_block = x * 2 * _panels_width / _width;
 
 		// Swapping A & D
 		if (!(y_block % 2)) {      // Even y block
 			if (!(x_block % 2)) {  // Left side of panel
-				x += RGBMATRIX_WIDTH / 2 / _panels_width;
-				y += RGBMATRIX_HEIGHT / 4;
+				x += _width / 2 / _panels_width;
+				y += _height / 4;
 			}
 		} else {                // Odd y block
 			if (x_block % 2) {  // Right side of panel
-				x -= RGBMATRIX_WIDTH / 2 / _panels_width;
-				y -= RGBMATRIX_HEIGHT / 4;
+				x -= _width / 2 / _panels_width;
+				y -= _height / 4;
 			}
 		}
 	}
@@ -325,14 +296,14 @@ void ESP8266RGBMatrix::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t
 	if (_rotate) {
 		uint16_t temp_x = x;
 		x = y;
-		y = RGBMATRIX_HEIGHT - 1 - temp_x;
+		y = _height - 1 - temp_x;
 	}
 
 	// Panels are naturally flipped
 	if (!_flip)
-		x = RGBMATRIX_WIDTH - 1 - x;
+		x = _width - 1 - x;
 
-	if ((x < 0) || (x >= RGBMATRIX_WIDTH) || (y < 0) || (y >= RGBMATRIX_HEIGHT))
+	if ((x < 0) || (x >= _width) || (y < 0) || (y >= _height))
 		return;
 
 	if (_color_order != RRGGBB) {
@@ -381,7 +352,7 @@ void ESP8266RGBMatrix::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t
 		// two byte alternating chunks bottom up for WZAGZIG
 		// two byte up down down up for VZAG
 		uint8_t cols_per_block = 16;
-		uint8_t panel_width = RGBMATRIX_WIDTH / _panels_width;
+		uint8_t panel_width = _width / _panels_width;
 		uint8_t blocks_x_per_panel = panel_width / cols_per_block;
 		uint8_t panel_index = x / panel_width;
 		// strip down to single panel coordinates, restored later using panel_index
@@ -419,8 +390,8 @@ void ESP8266RGBMatrix::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t
 		// Precomputed row offset values
 		base_offset = _row_offset[y] - (x / 8) * 2;
 		uint8_t row_sector = 0;
-		uint16_t row_sector__offset = RGBMATRIX_WIDTH / 4;
-		for (uint8_t yy = 0; yy < RGBMATRIX_HEIGHT; yy += 2 * _rowPattern) {
+		uint16_t row_sector__offset = _width / 4;
+		for (uint8_t yy = 0; yy < _height; yy += 2 * _rowPattern) {
 			if ((yy <= y) && (y < yy + _rowPattern))
 				total_offset_r = base_offset - row_sector__offset * row_sector;
 			if ((yy + _rowPattern <= y) && (y < yy + 2 * _rowPattern))
@@ -428,6 +399,7 @@ void ESP8266RGBMatrix::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t
 			row_sector++;
 		}
 	} else {
+		uint8_t	_panel_width_bytes = (_width / _panels_width) / 8;
 		// can only be non-zero when _height/(2 inputs per panel)/_row_pattern > 1
 		// i.e.: 32x32 panel with 1/8 scan (A/B/C lines) -> 32/2/8 = 2
 		uint8_t vert_index_in_buffer = (y % rows_per_buffer) / _rowPattern;  // which set of rows per buffer
@@ -509,12 +481,6 @@ void ESP8266RGBMatrix::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t
 	total_offset_g = total_offset_r - _patternColorBytes;
 	total_offset_b = total_offset_g - _patternColorBytes;
 
-#ifdef RGBMATRIX_DOUBLE_BUFFER
-	uint8_t* temp_bufferp = selected_buffer ? _buffer2 : _buffer;
-#else
-	uint8_t* temp_bufferp = _buffer;
-#endif
-
 	r = r >> (8 - _colorDepth);
 	g = g >> (8 - _colorDepth);
 	b = b >> (8 - _colorDepth);
@@ -522,39 +488,20 @@ void ESP8266RGBMatrix::fillMatrixBuffer(int16_t x, int16_t y, uint8_t r, uint8_t
 	//Color interlacing
 	for (int this_color_bit = 0; this_color_bit < _colorDepth; this_color_bit++) {
 		if ((r >> this_color_bit) & 0x01)
-			temp_bufferp[this_color_bit * _bufferSize + total_offset_r] |= _BV(bit_select);
+			_edit_buffer[this_color_bit * _bufferSize + total_offset_r] |= _BV(bit_select);
 		else
-			temp_bufferp[this_color_bit * _bufferSize + total_offset_r] &= ~_BV(bit_select);
+			_edit_buffer[this_color_bit * _bufferSize + total_offset_r] &= ~_BV(bit_select);
 
 		if ((g >> this_color_bit) & 0x01)
-			temp_bufferp[this_color_bit * _bufferSize + total_offset_g] |= _BV(bit_select);
+			_edit_buffer[this_color_bit * _bufferSize + total_offset_g] |= _BV(bit_select);
 		else
-			temp_bufferp[this_color_bit * _bufferSize + total_offset_g] &= ~_BV(bit_select);
+			_edit_buffer[this_color_bit * _bufferSize + total_offset_g] &= ~_BV(bit_select);
 
 		if ((b >> this_color_bit) & 0x01)
-			temp_bufferp[this_color_bit * _bufferSize + total_offset_b] |= _BV(bit_select);
+			_edit_buffer[this_color_bit * _bufferSize + total_offset_b] |= _BV(bit_select);
 		else
-			temp_bufferp[this_color_bit * _bufferSize + total_offset_b] &= ~_BV(bit_select);
+			_edit_buffer[this_color_bit * _bufferSize + total_offset_b] &= ~_BV(bit_select);
 	}
-}
-
-void ESP8266RGBMatrix::drawPixelRGB565(int16_t x, int16_t y, uint16_t color) {
-	uint8_t r = ((((color >> 11) & 0x1F) * 527) + 23) >> 6;
-	uint8_t g = ((((color >> 5) & 0x3F) * 259) + 33) >> 6;
-	uint8_t b = (((color & 0x1F) * 527) + 23) >> 6;
-#ifdef RGBMATRIX_DOUBLE_BUFFER
-	fillMatrixBuffer(x, y, r, g, b, !_active_buffer);
-#else
-	fillMatrixBuffer(x, y, r, g, b, false);
-#endif
-}
-
-void ESP8266RGBMatrix::drawPixelRGB888(int16_t x, int16_t y, uint8_t r, uint8_t g, uint8_t b) {
-#ifdef RGBMATRIX_DOUBLE_BUFFER
-	fillMatrixBuffer(x, y, r, g, b, !_active_buffer);
-#else
-	fillMatrixBuffer(x, y, r, g, b, false);
-#endif
 }
 
 uint8_t ESP8266RGBMatrix::getPixel(int8_t x, int8_t y) {
@@ -582,7 +529,7 @@ void ESP8266RGBMatrix::disable() {
 }
 
 void ESP8266RGBMatrix::refreshCallback() {
-	display.refresh();
+	RGBMatrix.refresh();
 }
 
 void ESP8266RGBMatrix::refreshTest(){
@@ -634,19 +581,4 @@ inline void ESP8266RGBMatrix::refresh() {
 	interrupts();
 }
 
-// clear everything
-void ESP8266RGBMatrix::clearDisplay() {
-#ifdef RGBMATRIX_DOUBLE_BUFFER
-	clearDisplay(!_active_buffer);
-#else
-	memset(_buffer, 0, sizeof(_buffer));
-#endif
-}
-
-#ifdef RGBMATRIX_DOUBLE_BUFFER
-void ESP8266RGBMatrix::clearDisplay(bool selected_buffer) {
-	memset(selected_buffer ? _buffer2 : _buffer, 0, sizeof(_buffer));
-}
-#endif
-
-ESP8266RGBMatrix display;
+ESP8266RGBMatrix RGBMatrix;
