@@ -8,7 +8,9 @@
 #define DEBUGLOG(...)
 #endif
 
+///// Pour l'appel du CallBackTimer: utiliser std::bind(&WiFiManager::handleRoot, this)
 ///// TODO Vérifier le _begin à chaque utilisation des buffer
+///// TODO Revoir le setFramePerSec
 ESP8266RGBMatrix::ESP8266RGBMatrix() {
 	//initialisation
 	_isBegin = false;
@@ -168,6 +170,8 @@ void ESP8266RGBMatrix::initPatternSeq(){
 		delete _muxSeq;
 	_muxSeq = new muxStruct[_rowPattern];
 	DEBUGLOG("Row pattern sequence :\r\n");
+	// Utilisation du code de Gray pour ne changer l'état que d'un seul bit à la fois lors du scan, donc 1 seule écriture sur le registre de sortie
+	// Thanks Mr Frank Gray 
 	uint8_t prevIndex = (_rowPattern-1) ^ ((_rowPattern-1)>>1);
 	for(int i=0; i<_rowPattern; i++){
 		uint8_t newIndex = i ^ (i>>1);

@@ -1,7 +1,7 @@
 #ifndef ESP8266RGBMatrix_H
 #define ESP8266RGBMatrix_H
 
-#define DEBUG_RGBMatrix  //Uncomment this to enable debug messages over serial port
+//#define DEBUG_RGBMatrix  //Uncomment this to enable debug messages over serial port
 // #define GPIO_OE 15
 // #define GPIO_LAT 12
 // #define GPIO_A 0
